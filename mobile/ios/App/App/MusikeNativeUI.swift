@@ -1,5 +1,7 @@
 import SwiftUI
+import Combine
 import WebKit
+import UniformTypeIdentifiers
 
 struct Track: Codable, Identifiable, Hashable {
     let id: String
@@ -31,9 +33,18 @@ struct PlayerState: Decodable {
     var shuffle: Bool = false
     var `repeat`: String = "off"
     var autoRadio: Bool = false
+    var volume: Double = 0.9
+    var muted: Bool = false
+    var errorText: String? = nil
     var current: Track? { queue.indices.contains(index) ? queue[index] : nil }
 }
-struct Appearance: Decodable { var accent: String = "#c3ec52"; var theme: String = "dark" }
+struct Appearance: Decodable {
+    var accent: String = "#c3ec52"
+    var theme: String = "dark"
+    var homeShortcuts: Bool = true
+    var homeRecent: Bool = true
+    var homeFavorites: Bool = true
+}
 struct Snapshot: Decodable { var player: PlayerState; var library: LibraryState; var appearance: Appearance; var lang: String }
 struct Genre: Decodable, Identifiable { let id: String; let name: String }
 struct AlbumCard: Decodable, Identifiable { let id: String; let title: String; let artist: String; let art: String; let thumb: String; let year: String }
@@ -71,14 +82,22 @@ final class NativeEngine: NSObject, ObservableObject, WKScriptMessageHandler {
         nextID += 1
         let id = nextID
         if let completion { callbacks[id] = completion }
-        guard let data = try? JSONSerialization.data(withJSONObject: ["id": id, "action": action, "args": args]), let json = String(data: data, encoding: .utf8) else { callbacks.removeValue(forKey: id); return }
+        guard let data = try? JSONSerialization.data(withJSONObject: ["id": id, "action": action, "args": args]), let json = String(data: data, encoding: .utf8) else {
+            callbacks.removeValue(forKey: id)?(.failure(NSError(domain: "Musike", code: 3, userInfo: [NSLocalizedDescriptionKey: "Invalid request data."])))
+            return
+        }
         webView.evaluateJavaScript("void window.musikeNative.dispatch(\(json))") { [weak self] _, error in
             if let error { self?.callbacks.removeValue(forKey: id)?(.failure(error)) }
         }
     }
     func request<T: Decodable>(_ action: String, _ args: [String: Any] = [:], completion: @escaping (Result<T, Error>) -> Void) {
         call(action, args) { result in
-            completion(result.flatMap { value in Result { try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])) } })
+            completion(result.flatMap { value in Result {
+                guard JSONSerialization.isValidJSONObject(value) else {
+                    throw NSError(domain: "Musike", code: 4, userInfo: [NSLocalizedDescriptionKey: "Invalid response data."])
+                }
+                return try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: value))
+            } })
         }
     }
     func object<T: Encodable>(_ value: T) -> Any { (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(value))) ?? [:] }
@@ -118,55 +137,253 @@ struct NativeRoot: View {
     @ObservedObject var engine: NativeEngine
     @State private var tab = 0
     @State private var playerOpen = false
-    var body: some View {
+    @ViewBuilder var body: some View {
+        Group {
+        if #available(iOS 26.1, *) {
+            tabs.tabViewBottomAccessory(isEnabled: engine.player.current != nil) {
+                if let track = engine.player.current { MiniPlayer(engine: engine, track: track, open: { playerOpen = true }, accessory: true) }
+            }.modifier(RootPresentation(engine: engine, playerOpen: $playerOpen))
+        } else if #available(iOS 26.0, *) {
+            tabs.tabViewBottomAccessory {
+                if let track = engine.player.current { MiniPlayer(engine: engine, track: track, open: { playerOpen = true }, accessory: true) }
+            }.modifier(RootPresentation(engine: engine, playerOpen: $playerOpen))
+        } else {
+            tabs.modifier(RootPresentation(engine: engine, playerOpen: $playerOpen))
+        }
+        }.preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark).tint(engine.accent)
+    }
+    var tabs: some View {
         TabView(selection: $tab) {
-            NavigationView { HomeScreen(engine: engine, tab: $tab) }.navigationViewStyle(.stack)
+            tabContent { HomeScreen(engine: engine, tab: $tab) }
                 .tabItem { Label(engine.text("Home", "Inicio", "Início"), systemImage: "house.fill") }.tag(0)
-            NavigationView { SearchScreen(engine: engine) }.navigationViewStyle(.stack)
+            tabContent { SearchScreen(engine: engine) }
                 .tabItem { Label(engine.text("Search", "Buscar", "Buscar"), systemImage: "magnifyingglass") }.tag(1)
-            NavigationView { LibraryScreen(engine: engine) }.navigationViewStyle(.stack)
+            tabContent { LibraryScreen(engine: engine) }
                 .tabItem { Label(engine.text("Library", "Biblioteca", "Biblioteca"), systemImage: "square.stack.fill") }.tag(2)
         }
-        .tint(engine.accent)
-        .preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let track = engine.player.current {
-                MiniPlayer(engine: engine, track: track, open: { playerOpen = true }).padding(.horizontal, 10).padding(.bottom, 5)
-            }
-        }
-        .sheet(isPresented: $playerOpen) { PlayerScreen(engine: engine) }
-        .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { engine.error != nil }, set: { if !$0 { engine.error = nil } })) {
-            Button("OK", role: .cancel) { engine.error = nil }
-        } message: { Text(engine.error ?? "") }
     }
+    @ViewBuilder func tabContent<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if #available(iOS 26.0, *) {
+            NavigationView { content() }.navigationViewStyle(.stack)
+        } else {
+            NavigationView { content() }.navigationViewStyle(.stack)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if let track = engine.player.current {
+                        MiniPlayer(engine: engine, track: track, open: { playerOpen = true }).padding(.horizontal, 10).padding(.bottom, 5)
+                    }
+                }
+        }
+    }
+}
+
+struct RootPresentation: ViewModifier {
+    @ObservedObject var engine: NativeEngine
+    @Binding var playerOpen: Bool
+    func body(content: Content) -> some View {
+        content.sheet(isPresented: $playerOpen) { PlayerScreen(engine: engine) }
+            .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { engine.error != nil }, set: { if !$0 { engine.error = nil } })) {
+                Button("OK", role: .cancel) { engine.error = nil }
+            } message: { Text(engine.error ?? "") }
+    }
+
 }
 
 struct MiniPlayer: View {
     @ObservedObject var engine: NativeEngine
     let track: Track
     var open: () -> Void
+    var accessory = false
     var body: some View {
         HStack(spacing: 12) {
             Artwork(url: track.thumb, size: 48)
             VStack(alignment: .leading, spacing: 3) { Text(track.title).font(.subheadline.bold()).lineLimit(1); Text(track.artist).font(.caption).foregroundColor(.secondary).lineLimit(1) }
             Spacer(minLength: 0)
-            Button { engine.call("toggle") } label: { Image(systemName: engine.player.status == "playing" ? "pause.fill" : "play.fill").font(.title3).frame(width: 42, height: 48) }.accessibilityLabel(engine.player.status == "playing" ? "Pause" : "Play")
-            Button { engine.call("next") } label: { Image(systemName: "forward.end.fill").frame(width: 38, height: 48) }.accessibilityLabel("Next")
-        }.padding(8).contentShape(Rectangle()).onTapGesture(perform: open).musikeGlass(20)
+            Button { engine.call("toggle") } label: { Image(systemName: engine.player.status == "playing" ? "pause.fill" : "play.fill").font(.title3).frame(width: 42, height: 48) }.accessibilityLabel(engine.player.status == "playing" ? engine.text("Pause", "Pausar", "Pausar") : engine.text("Play", "Reproducir", "Tocar"))
+            Button { engine.call("next") } label: { Image(systemName: "forward.end.fill").frame(width: 38, height: 48) }.accessibilityLabel(engine.text("Next", "Siguiente", "Próxima"))
+        }.foregroundColor(.primary).padding(accessory ? 4 : 8).contentShape(Rectangle()).onTapGesture(perform: open)
+            .modifier(MiniPlayerSurface(accessory: accessory))
+    }
+}
+
+struct MiniPlayerSurface: ViewModifier {
+    var accessory: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if accessory { content } else { content.musikeGlass(20) }
+    }
+}
+
+struct BackupPreview: Decodable {
+    let playlists: Int
+    let playlistTracks: Int
+    let favorites: Int
+    let history: Int
+    let hasSettings: Bool
+}
+struct ShareFile: Identifiable { let id = UUID(); let url: URL }
+struct NativeShareSheet: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: [url], applicationActivities: nil) }
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
+struct SettingsScreen: View {
+    @ObservedObject var engine: NativeEngine
+    @Environment(\.presentationMode) private var presentation
+    @State private var customColor = Color(hex: "#c3ec52")
+    @State private var importing = false
+    @State private var pendingBackup: Any?
+    @State private var backupName = ""
+    @State private var preview: BackupPreview?
+    @State private var importMode = "merge"
+    @State private var applySettings = true
+    @State private var confirmReplace = false
+    @State private var busy = false
+    @State private var shareFile: ShareFile?
+    @State private var notice: String?
+    private let colors = ["#c3ec52", "#34d399", "#22d3ee", "#60a5fa", "#a78bfa", "#f472b6", "#fb7c5c", "#fbbf24"]
+
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text(engine.text("Appearance", "Apariencia", "Aparência"))) {
+                    Picker(engine.text("Theme", "Tema", "Tema"), selection: Binding(get: { engine.appearance.theme }, set: { engine.call("theme", ["value": $0]) })) {
+                        Text(engine.text("Dark", "Oscuro", "Escuro")).tag("dark")
+                        Text(engine.text("Light", "Claro", "Claro")).tag("light")
+                    }.pickerStyle(.segmented)
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text(engine.text("Accent color", "Color de acento", "Cor de destaque"))
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 36), spacing: 10)], alignment: .leading, spacing: 12) {
+                            ForEach(colors, id: \.self) { hex in
+                                Button { setColor(hex) } label: {
+                                    ZStack { Circle().fill(Color(hex: hex)); if engine.appearance.accent.lowercased() == hex { Image(systemName: "checkmark").font(.caption.bold()).foregroundColor(.black) } }
+                                        .frame(width: 34, height: 34)
+                                }.buttonStyle(.plain).accessibilityLabel(hex)
+                            }
+                        }
+                        ColorPicker(engine.text("Custom color", "Color personalizado", "Cor personalizada"), selection: $customColor, supportsOpacity: false)
+                            .onChange(of: customColor) { color in
+                                let uiColor = UIColor(color); var red: CGFloat = 0; var green: CGFloat = 0; var blue: CGFloat = 0; var alpha: CGFloat = 0
+                                if uiColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+                                    setColor(String(format: "#%02x%02x%02x", Int((red * 255).rounded()), Int((green * 255).rounded()), Int((blue * 255).rounded())))
+                                }
+                            }
+                    }.padding(.vertical, 4)
+                }
+                Section(header: Text(engine.text("Language", "Idioma", "Idioma"))) {
+                    Picker(engine.text("Language", "Idioma", "Idioma"), selection: Binding(get: { engine.language }, set: { engine.call("language", ["value": $0]) })) {
+                        Text("English").tag("en"); Text("Español").tag("es-ES"); Text("Português (Brasil)").tag("pt-BR")
+                    }
+                }
+                Section(header: Text(engine.text("Home", "Inicio", "Início"))) {
+                    Toggle(engine.text("Shortcuts", "Accesos directos", "Atalhos"), isOn: setting("homeShortcuts", engine.appearance.homeShortcuts))
+                    Toggle(engine.text("Recently played", "Escuchado recientemente", "Ouvidas recentemente"), isOn: setting("homeRecent", engine.appearance.homeRecent))
+                    Toggle(engine.text("Your favorites", "Tus favoritos", "Suas favoritas"), isOn: setting("homeFavorites", engine.appearance.homeFavorites))
+                    Button(engine.text("Reset appearance", "Restablecer apariencia", "Redefinir aparência")) { engine.call("resetAppearance") }
+                }
+                Section(header: Text(engine.text("Your data", "Tus datos", "Seus dados")), footer: Text(engine.text("Move your library between Musike installations.", "Lleva tu biblioteca a otra instalación de Musike.", "Transfira sua biblioteca para outra instalação do Musike."))) {
+                    Button { exportBackup() } label: { Label(engine.text("Export backup", "Exportar copia", "Exportar backup"), systemImage: "square.and.arrow.up") }.disabled(busy)
+                    Button { importing = true } label: { Label(engine.text("Import backup", "Importar copia", "Importar backup"), systemImage: "square.and.arrow.down") }.disabled(busy)
+                    if busy { ProgressView() }
+                    if let preview {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(backupName).font(.headline).lineLimit(1)
+                            Text("\(preview.playlists) \(engine.text("playlists", "listas", "playlists")) · \(preview.playlistTracks) \(engine.text("tracks", "canciones", "músicas"))")
+                            Text("\(preview.favorites) \(engine.text("favorites", "favoritos", "favoritas")) · \(preview.history) \(engine.text("recent tracks", "recientes", "recentes"))")
+                        }.font(.subheadline).foregroundColor(.secondary)
+                        Picker(engine.text("Import mode", "Modo de importación", "Modo de importação"), selection: $importMode) {
+                            Text(engine.text("Merge", "Combinar", "Mesclar")).tag("merge")
+                            Text(engine.text("Replace", "Reemplazar", "Substituir")).tag("replace")
+                        }.pickerStyle(.segmented)
+                        if preview.hasSettings { Toggle(engine.text("Apply saved settings", "Aplicar ajustes guardados", "Aplicar ajustes salvos"), isOn: $applySettings) }
+                        Text(importMode == "replace" ? engine.text("Replaces the current library with this backup.", "Sustituye la biblioteca actual por esta copia.", "Substitui a biblioteca atual por este backup.") : engine.text("Adds the backup to your current library.", "Añade la copia a tu biblioteca actual.", "Adiciona o backup à sua biblioteca atual.")).font(.caption).foregroundColor(.secondary)
+                        Button(importMode == "replace" ? engine.text("Replace library", "Reemplazar biblioteca", "Substituir biblioteca") : engine.text("Import", "Importar", "Importar")) {
+                            if importMode == "replace" { confirmReplace = true } else { restoreBackup() }
+                        }.disabled(busy)
+                        Button(engine.text("Cancel", "Cancelar", "Cancelar"), role: .cancel) { pendingBackup = nil; self.preview = nil }
+                    }
+                }
+            }
+            .navigationTitle(engine.text("Settings", "Ajustes", "Ajustes"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button(engine.text("Done", "Listo", "Concluído")) { presentation.wrappedValue.dismiss() } } }
+            .onAppear { customColor = Color(hex: engine.appearance.accent) }
+            .onChange(of: engine.appearance.accent) { customColor = Color(hex: $0) }
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
+                switch result {
+                case .success(let url): previewBackup(url)
+                case .failure(let error): engine.error = error.localizedDescription
+                }
+            }
+            .sheet(item: $shareFile) { NativeShareSheet(url: $0.url) }
+            .alert(engine.text("Replace your library?", "¿Reemplazar tu biblioteca?", "Substituir sua biblioteca?"), isPresented: $confirmReplace) {
+                Button(engine.text("Replace", "Reemplazar", "Substituir"), role: .destructive) { restoreBackup() }
+                Button(engine.text("Cancel", "Cancelar", "Cancelar"), role: .cancel) {}
+            } message: { Text(engine.text("Your current library will be replaced by the backup.", "La biblioteca actual será sustituida por la copia.", "Sua biblioteca atual será substituída pelo backup.")) }
+            .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { engine.error != nil }, set: { if !$0 { engine.error = nil } })) { Button("OK", role: .cancel) { engine.error = nil } } message: { Text(engine.error ?? "") }
+            .alert(engine.text("Backup", "Copia de seguridad", "Backup"), isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) { Button("OK", role: .cancel) { notice = nil } } message: { Text(notice ?? "") }
+        }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark)
+    }
+    func setting(_ key: String, _ value: Bool) -> Binding<Bool> {
+        Binding(get: { value }, set: { engine.call("appearance", ["patch": [key: $0]]) })
+    }
+    func setColor(_ hex: String) {
+        guard hex.lowercased() != engine.appearance.accent.lowercased() else { return }
+        engine.call("appearance", ["patch": ["accent": hex]])
+    }
+    func exportBackup() {
+        busy = true
+        engine.call("createBackup") { result in
+            busy = false
+            do {
+                let data = try JSONSerialization.data(withJSONObject: result.get(), options: [.prettyPrinted, .sortedKeys])
+                let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("musike-backup-\(formatter.string(from: Date())).musike.json")
+                try data.write(to: url, options: .atomic)
+                shareFile = ShareFile(url: url)
+            } catch { engine.error = error.localizedDescription }
+        }
+    }
+    func previewBackup(_ url: URL) {
+        do {
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            let data = try Data(contentsOf: url)
+            let backup = try JSONSerialization.jsonObject(with: data)
+            busy = true
+            engine.request("previewBackup", ["backup": backup]) { (result: Result<BackupPreview, Error>) in
+                busy = false
+                switch result {
+                case .success(let value): pendingBackup = backup; backupName = url.lastPathComponent; preview = value; importMode = "merge"; applySettings = true
+                case .failure(let error): engine.error = error.localizedDescription
+                }
+            }
+        } catch { engine.error = error.localizedDescription }
+    }
+    func restoreBackup() {
+        guard let backup = pendingBackup else { return }
+        busy = true
+        engine.call("restoreBackup", ["backup": backup, "mode": importMode, "applySettings": applySettings]) { result in
+            busy = false
+            switch result {
+            case .success: pendingBackup = nil; preview = nil; notice = engine.text("Backup imported.", "Copia importada.", "Backup importado.")
+            case .failure(let error): engine.error = error.localizedDescription
+            }
+        }
     }
 }
 
 struct HomeScreen: View {
     @ObservedObject var engine: NativeEngine
     @Binding var tab: Int
+    @State private var settingsOpen = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text(engine.text("Your music, uninterrupted.", "Tu música, sin interrupciones.", "Sua música, sem interrupções.")).font(.subheadline).foregroundColor(.secondary)
-                HStack {
+                if engine.appearance.homeShortcuts { HStack {
                     NavigationLink { CollectionScreen(engine: engine, title: engine.text("Favorites", "Favoritos", "Favoritas"), tracks: engine.library.favorites) } label: { shortcut("heart.fill", engine.text("Favorites", "Favoritos", "Favoritas")) }
                     NavigationLink { CollectionScreen(engine: engine, title: engine.text("Recently played", "Escuchado recientemente", "Ouvidas recentemente"), tracks: engine.library.history) } label: { shortcut("clock.arrow.circlepath", engine.text("Recent", "Recientes", "Recentes")) }
-                }.buttonStyle(.plain)
+                }.buttonStyle(.plain) }
                 if !engine.ready || engine.library.status == "loading" { ProgressView().frame(maxWidth: .infinity).padding() }
                 else if engine.library.history.isEmpty && engine.library.favorites.isEmpty && engine.library.playlists.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -175,7 +392,7 @@ struct HomeScreen: View {
                         Button(engine.text("Search music", "Buscar música", "Buscar música")) { tab = 1 }.buttonStyle(.borderedProminent).tint(engine.accent).foregroundColor(.black)
                     }.padding(20).frame(maxWidth: .infinity, alignment: .leading).musikeGlass()
                 }
-                if !engine.library.history.isEmpty {
+                if engine.appearance.homeRecent && !engine.library.history.isEmpty {
                     Text(engine.text("Recently played", "Escuchado recientemente", "Ouvidas recentemente")).font(.title2.bold())
                     ScrollView(.horizontal, showsIndicators: false) { HStack(alignment: .top, spacing: 14) {
                         ForEach(Array(engine.library.history.prefix(16).enumerated()), id: \.element.id) { index, track in
@@ -186,12 +403,13 @@ struct HomeScreen: View {
                         }
                     } }
                 }
-                if !engine.library.favorites.isEmpty {
+                if engine.appearance.homeFavorites && !engine.library.favorites.isEmpty {
                     Text(engine.text("Your favorites", "Tus favoritos", "Suas favoritas")).font(.title2.bold())
                     TrackList(engine: engine, tracks: Array(engine.library.favorites.prefix(5)))
                 }
             }.padding()
-        }.navigationTitle("Musike").toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button { engine.showClassic?() } label: { Image(systemName: "gearshape") }.accessibilityLabel(engine.text("Settings and more", "Ajustes y más", "Ajustes e mais")) } }
+        }.navigationTitle("Musike").toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button { settingsOpen = true } label: { Image(systemName: "gearshape") }.accessibilityLabel(engine.text("Settings", "Ajustes", "Ajustes")) } }
+        .sheet(isPresented: $settingsOpen) { SettingsScreen(engine: engine) }
     }
     func shortcut(_ icon: String, _ title: String) -> some View {
         HStack { Image(systemName: icon).foregroundColor(engine.accent); Text(title).font(.subheadline.bold()).lineLimit(1); Spacer(minLength: 0) }.padding().frame(maxWidth: .infinity, minHeight: 65).musikeGlass(16)
@@ -413,7 +631,7 @@ struct PlayerScreen: View {
                     HStack { VStack(alignment: .leading, spacing: 5) { Text(track.title).font(.title2.bold()).lineLimit(2); Text(track.artist).foregroundColor(.secondary).lineLimit(1) }; Spacer(); Button { engine.track("favorite", track) } label: { Image(systemName: engine.library.favorites.contains(where: { $0.id == track.id }) ? "heart.fill" : "heart").font(.title2) }.foregroundColor(engine.accent) }
                     VStack(spacing: 4) {
                         Slider(value: Binding(get: { seeking ? seekValue : min(engine.player.position, max(engine.player.duration, 1)) }, set: { seekValue = $0 }), in: 0...max(engine.player.duration, 1), onEditingChanged: { editing in seeking = editing; if !editing { engine.call("seek", ["position": seekValue]) } })
-                        HStack { Text(time(engine.player.position)); Spacer(); Text(time(engine.player.duration)) }.font(.caption.monospacedDigit()).foregroundColor(.secondary)
+                        HStack { Text(time(seeking ? seekValue : engine.player.position)); Spacer(); Text(time(engine.player.duration)) }.font(.caption.monospacedDigit()).foregroundColor(.secondary)
                     }
                     HStack(spacing: 0) {
                         Button { engine.call("shuffle") } label: { Image(systemName: "shuffle").foregroundColor(engine.player.shuffle ? engine.accent : .secondary).frame(maxWidth: .infinity) }
@@ -423,13 +641,44 @@ struct PlayerScreen: View {
                         Button { engine.call("repeat") } label: { Image(systemName: engine.player.repeat == "one" ? "repeat.1" : "repeat").foregroundColor(engine.player.repeat == "off" ? .secondary : engine.accent).frame(maxWidth: .infinity) }
                     }.buttonStyle(.plain)
                     if engine.player.status == "loading" { ProgressView(engine.text("Loading…", "Cargando…", "Carregando…")) }
-                    if engine.player.status == "error" { Text(engine.text("Playback failed. Try again.", "No se pudo reproducir. Inténtalo de nuevo.", "Não foi possível reproduzir. Tente novamente.")).font(.caption).foregroundColor(.secondary) }
-                    Button { queueOpen = true } label: { Label(engine.text("Queue", "Cola", "Fila"), systemImage: "list.bullet") }.padding(.top, 8)
+                    if engine.player.status == "error" {
+                        Text(engine.player.errorText ?? engine.text("Playback failed. Try again.", "No se pudo reproducir. Inténtalo de nuevo.", "Não foi possível reproduzir. Tente novamente.")).font(.caption).foregroundColor(.secondary)
+                        Button(engine.text("Retry", "Reintentar", "Tentar novamente")) { engine.call("toggle") }
+                    }
+                    HStack(spacing: 14) {
+                        Button { engine.call("mute") } label: { Image(systemName: engine.player.muted ? "speaker.slash.fill" : "speaker.fill") }
+                            .accessibilityLabel(engine.player.muted ? engine.text("Unmute", "Activar sonido", "Ativar som") : engine.text("Mute", "Silenciar", "Silenciar"))
+                        Slider(value: Binding(get: { engine.player.muted ? 0 : engine.player.volume }, set: { engine.call("volume", ["value": $0]) }), in: 0...1)
+                            .accessibilityLabel(engine.text("Volume", "Volumen", "Volume"))
+                        Image(systemName: "speaker.wave.3.fill").foregroundColor(.secondary)
+                    }
+                    HStack(spacing: 12) {
+                        Button {
+                            engine.call("startRadio", ["track": engine.object(track)]) { result in
+                                if case .failure(let error) = result { engine.error = error.localizedDescription }
+                            }
+                        } label: { Label(engine.text("Start radio", "Iniciar radio", "Iniciar rádio"), systemImage: "dot.radiowaves.left.and.right") }
+                        Button { queueOpen = true } label: { Label(engine.text("Queue", "Cola", "Fila"), systemImage: "list.bullet") }
+                    }.buttonStyle(.bordered)
+                    if engine.player.queue.indices.contains(engine.player.index + 1) {
+                        let next = engine.player.queue[engine.player.index + 1]
+                        HStack(spacing: 12) {
+                            Artwork(url: next.thumb, size: 45)
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(engine.text("Up next", "A continuación", "A seguir")).font(.caption).foregroundColor(.secondary)
+                                Text(next.title).font(.subheadline.bold()).lineLimit(1)
+                                Text(next.artist).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                            }; Spacer()
+                        }.padding(12).musikeGlass(16)
+                    }
                 }
             }.padding(.horizontal, 28).frame(maxWidth: .infinity) }
         }.navigationTitle(engine.text("Now playing", "En reproducción", "Tocando agora")).navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button { presentation.wrappedValue.dismiss() } label: { Image(systemName: "chevron.down") } } }
         .sheet(isPresented: $queueOpen) { QueueScreen(engine: engine) }
+        .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { engine.error != nil }, set: { if !$0 { engine.error = nil } })) {
+            Button("OK", role: .cancel) { engine.error = nil }
+        } message: { Text(engine.error ?? "") }
         }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark)
     }
     func time(_ value: Double) -> String { guard value.isFinite && value >= 0 else { return "0:00" }; let seconds = Int(value); return String(format: "%d:%02d", seconds / 60, seconds % 60) }
@@ -456,11 +705,15 @@ final class MusikeRootController: UIViewController {
     private let runtime = MusikeWebViewController()
     private var host: UIHostingController<NativeRoot>!
     private let returnButton = UIButton(type: .system)
+    private var appearanceObserver: AnyCancellable?
     override func viewDidLoad() {
         super.viewDidLoad()
         addChild(runtime); runtime.view.frame = view.bounds; runtime.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(runtime.view); runtime.didMove(toParent: self)
         host = UIHostingController(rootView: NativeRoot(engine: runtime.nativeEngine))
         addChild(host); host.view.frame = view.bounds; host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(host.view); host.didMove(toParent: self)
+        appearanceObserver = runtime.nativeEngine.$appearance.map(\.theme).removeDuplicates().sink { [weak self] theme in
+            self?.host.overrideUserInterfaceStyle = theme == "light" ? .light : .dark
+        }
         returnButton.setImage(UIImage(systemName: "chevron.left.circle.fill"), for: .normal)
         returnButton.accessibilityLabel = "Return to native interface"
         returnButton.tintColor = .systemBlue
