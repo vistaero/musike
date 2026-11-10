@@ -18,6 +18,7 @@ import { capabilities } from "./lib/api";
 import { cn } from "./lib/format";
 import { legacyRedirect, NOW_PLAYING_HASH, paths } from "./lib/routes";
 import { usePlayer } from "./player/player";
+import { setIosSearchListNavigator } from "./native/ios-ui";
 import { useLibrary } from "./stores/library";
 import { openSettings, useSystem } from "./stores/system";
 import { toast, useUi } from "./stores/ui";
@@ -49,6 +50,20 @@ export default function App() {
   useEffect(() => {
     void loadLibrary();
   }, [loadLibrary]);
+
+  useEffect(() => {
+    setIosSearchListNavigator(() => {
+      const ui = useUi.getState();
+      ui.setSettingsOpen(false);
+      ui.closeMenu();
+      ui.openAddToPlaylist(null);
+      ui.closePanel();
+      ui.setShortcutsOpen(false);
+      ui.setTheater(false);
+      navigate(paths.searchList);
+    });
+    return () => setIosSearchListNavigator();
+  }, [navigate]);
 
   // Check yt-dlp shortly after start and say so once if something needs doing (not on Android: no yt-dlp there).
   useEffect(() => {

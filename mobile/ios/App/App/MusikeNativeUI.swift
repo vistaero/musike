@@ -193,6 +193,14 @@ final class NativeEngine: NSObject, ObservableObject, WKScriptMessageHandler {
             } })
         }
     }
+    func openSearchList() {
+        call("openSearchList") { [weak self] result in
+            switch result {
+            case .success: self?.showClassic?()
+            case .failure(let error): self?.error = error.localizedDescription
+            }
+        }
+    }
     func object<T: Encodable>(_ value: T) -> Any { (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(value))) ?? [:] }
     func play(_ tracks: [Track], at index: Int = 0) { guard !tracks.isEmpty else { return }; call("playList", ["tracks": object(tracks), "index": index]) }
     func track(_ action: String, _ track: Track, extra: [String: Any] = [:]) { var args = extra; args["track"] = object(track); call(action, args) }
@@ -554,6 +562,12 @@ struct SearchScreen: View {
                     Text(engine.text("Videos", "Vídeos", "Vídeos")).tag("video")
                     Text(engine.text("Albums", "Álbumes", "Álbuns")).tag("album")
                 }.pickerStyle(.segmented)
+                HStack {
+                    Spacer()
+                    Button { engine.openSearchList() } label: {
+                        Label(engine.text("Search a list", "Buscar una lista", "Buscar lista"), systemImage: "list.bullet.rectangle")
+                    }.buttonStyle(.bordered).accessibilityIdentifier("search-list")
+                }
                 if loading { ProgressView().frame(maxWidth: .infinity).padding() }
                 else if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(engine.text("Explore genres", "Explorar géneros", "Explorar gêneros")).font(.title2.bold())
@@ -571,7 +585,6 @@ struct SearchScreen: View {
         .onChange(of: query) { _ in search() }.onChange(of: kind) { _ in search() }
         .onAppear { if genres.isEmpty && engine.ready { loadGenres() } }
         .onChange(of: engine.ready) { ready in if ready { loadGenres() } }
-        .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button { engine.showClassic?() } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel(engine.text("More search options", "Más opciones de búsqueda", "Mais opções de busca")) } }
     }
     func loadGenres() { engine.request("genres") { (result: Result<[Genre], Error>) in if case .success(let value) = result { genres = value } } }
     func search() {

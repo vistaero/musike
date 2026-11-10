@@ -9,6 +9,12 @@ import { createBackup, readBackup, restoreBackup, summarize } from "../lib/backu
 import { isLang } from "../i18n";
 import { playbackDiagnostic } from "./diagnostics";
 
+// Registered by the mounted router so native navigation uses React Router rather than exposing its last page.
+let openSearchList: (() => void) | undefined;
+export function setIosSearchListNavigator(navigate?: () => void) {
+  openSearchList = navigate;
+}
+
 /** SwiftUI talks to the same stores and backend as the existing app, including its on-device library. */
 export function installIosUI() {
   const handler = (globalThis as any).webkit?.messageHandlers?.musikeUI;
@@ -42,6 +48,10 @@ export function installIosUI() {
         if (["playList", "toggle", "next", "previous", "jumpTo"].includes(action)) playbackDiagnostic(`command.${action.toLowerCase()}`);
         switch (action) {
           case "state": sendState(); break;
+          case "openSearchList":
+            if (!openSearchList) throw new Error("Search is still loading.");
+            openSearchList();
+            break;
           case "search": result = args.kind === "album" ? await api.searchAlbums(args.query) : await api.search(args.query, args.kind); break;
           case "genres": result = await api.genres(); break;
           case "genre": result = await api.genre(args.id); break;
