@@ -1,7 +1,100 @@
 import SwiftUI
 import Combine
+import Network
 import WebKit
 import UniformTypeIdentifiers
+
+/// A bounded local trace containing playback events and error codes, never track names or stream URLs.
+final class PlaybackDiagnostics: NSObject, WKScriptMessageHandler, ObservableObject {
+    static let shared = PlaybackDiagnostics()
+    @Published private(set) var networkUnavailable = false
+    private let queue = DispatchQueue(label: "app.musike.playback-diagnostics")
+    private let pathMonitor = NWPathMonitor()
+    private let file = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("playback-diagnostics.log")
+    private var lines: [String]?
+    private let limit = 600
+    private override init() {
+        super.init()
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            self?.record(Self.describe(path))
+            let unavailable = path.status != .satisfied
+            DispatchQueue.main.async { self?.networkUnavailable = unavailable }
+        }
+        pathMonitor.start(queue: DispatchQueue(label: "app.musike.network-diagnostics"))
+    }
+
+    private static func describe(_ path: NWPath) -> String {
+        let connection: String
+        if path.usesInterfaceType(.wifi) { connection = "wifi" }
+        else if path.usesInterfaceType(.cellular) { connection = "cellular" }
+        else if path.usesInterfaceType(.wiredEthernet) { connection = "wired" }
+        else { connection = "other" }
+        let state = path.status == .satisfied ? "satisfied" : path.status == .requiresConnection ? "requires-connection" : "unsatisfied"
+        return "network.path type=\(connection) state=\(state) expensive=\(path.isExpensive) constrained=\(path.isConstrained)"
+    }
+
+    private func readLines() -> [String] {
+        if let lines { return lines }
+        let data = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+        let restored = data.split(separator: "\n").map(String.init).suffix(limit)
+        lines = Array(restored)
+        return lines ?? []
+    }
+    private func persist(_ entries: [String]) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try (entries.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+    }
+    func record(_ message: String) {
+        queue.async {
+            var entries = self.readLines()
+            entries.append("\(ISO8601DateFormatter().string(from: Date())) \(message)")
+            if entries.count > self.limit { entries.removeFirst(entries.count - self.limit) }
+            self.lines = entries
+            try? self.persist(entries)
+        }
+    }
+    static func errorCode(_ error: Error?) -> String {
+        guard let error = error as NSError? else { return "none" }
+        let domain = error.domain.range(of: "^[A-Za-z0-9_.-]+$", options: .regularExpression) != nil ? error.domain : "other"
+        let underlying = (error.userInfo[NSUnderlyingErrorKey] as? NSError).map { " underlying=\($0.code)" } ?? ""
+        return "domain=\(domain) code=\(error.code)\(underlying)"
+    }
+    func sessionStarted() {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
+        record("session.start app=\(version) build=\(build) ios=\(UIDevice.current.systemVersion)")
+    }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let event = message.body as? String, event.count <= 80,
+              event.range(of: "^[a-z0-9_.-]+$", options: .regularExpression) != nil else { return }
+        record("web.\(event)")
+    }
+    func clear(completion: @escaping () -> Void) {
+        queue.async {
+            self.lines = []
+            try? self.persist([])
+            self.record("diagnostics.cleared")
+            self.record(Self.describe(self.pathMonitor.currentPath))
+            DispatchQueue.main.async(execute: completion)
+        }
+    }
+    func export(completion: @escaping (Result<URL, Error>) -> Void) {
+        queue.async {
+            do {
+                var entries = self.readLines()
+                entries.append("\(ISO8601DateFormatter().string(from: Date())) diagnostics.export")
+                if entries.count > self.limit { entries.removeFirst(entries.count - self.limit) }
+                self.lines = entries
+                try? self.persist(entries)
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("musike-playback-diagnostics.log")
+                try (entries.joined(separator: "\n") + "\n").write(to: url, atomically: true, encoding: .utf8)
+                DispatchQueue.main.async { completion(.success(url)) }
+            } catch {
+                DispatchQueue.main.async { completion(.failure(error)) }
+            }
+        }
+    }
+}
 
 struct Track: Codable, Identifiable, Hashable {
     let id: String
@@ -68,7 +161,7 @@ final class NativeEngine: NSObject, ObservableObject, WKScriptMessageHandler {
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let type = body["type"] as? String else { return }
-        if type == "ready" { ready = true; return }
+        if type == "ready" { PlaybackDiagnostics.shared.record("web.bridge.ready"); ready = true; return }
         if type == "state", let data = try? JSONSerialization.data(withJSONObject: body),
            let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
             player = snapshot.player; library = snapshot.library; appearance = snapshot.appearance; language = snapshot.lang
@@ -190,18 +283,33 @@ struct RootPresentation: ViewModifier {
 
 struct MiniPlayer: View {
     @ObservedObject var engine: NativeEngine
+    @ObservedObject private var diagnostics = PlaybackDiagnostics.shared
     let track: Track
     var open: () -> Void
     var accessory = false
     var body: some View {
         HStack(spacing: 12) {
             Artwork(url: track.thumb, size: 48)
-            VStack(alignment: .leading, spacing: 3) { Text(track.title).font(.subheadline.bold()).lineLimit(1); Text(track.artist).font(.caption).foregroundColor(.secondary).lineLimit(1) }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(track.title).font(.subheadline.bold()).lineLimit(1)
+                Text(subtitle).font(.caption).foregroundColor(.secondary).lineLimit(1)
+            }
             Spacer(minLength: 0)
-            Button { engine.call("toggle") } label: { Image(systemName: engine.player.status == "playing" ? "pause.fill" : "play.fill").font(.title3).frame(width: 42, height: 48) }.accessibilityLabel(engine.player.status == "playing" ? engine.text("Pause", "Pausar", "Pausar") : engine.text("Play", "Reproducir", "Tocar"))
+            Button { engine.call("toggle") } label: {
+                if engine.player.status == "loading" { ProgressView().frame(width: 42, height: 48) }
+                else { Image(systemName: engine.player.status == "playing" ? "pause.fill" : "play.fill").font(.title3).frame(width: 42, height: 48) }
+            }.accessibilityLabel(engine.player.status == "playing" ? engine.text("Pause", "Pausar", "Pausar") : engine.text("Play", "Reproducir", "Tocar"))
             Button { engine.call("next") } label: { Image(systemName: "forward.end.fill").frame(width: 38, height: 48) }.accessibilityLabel(engine.text("Next", "Siguiente", "Próxima"))
         }.foregroundColor(.primary).padding(accessory ? 4 : 8).contentShape(Rectangle()).onTapGesture(perform: open)
             .modifier(MiniPlayerSurface(accessory: accessory))
+    }
+    private var subtitle: String {
+        if (engine.player.status == "loading" || engine.player.status == "error") && diagnostics.networkUnavailable {
+            return engine.text("No network connection", "Sin conexión de red", "Sem conexão de rede")
+        }
+        if engine.player.status == "loading" { return engine.text("Loading…", "Cargando…", "Carregando…") }
+        if engine.player.status == "error" { return engine.text("Playback failed", "Error de reproducción", "Erro de reprodução") }
+        return track.artist
     }
 }
 
@@ -279,6 +387,19 @@ struct SettingsScreen: View {
                     Toggle(engine.text("Recently played", "Escuchado recientemente", "Ouvidas recentemente"), isOn: setting("homeRecent", engine.appearance.homeRecent))
                     Toggle(engine.text("Your favorites", "Tus favoritos", "Suas favoritas"), isOn: setting("homeFavorites", engine.appearance.homeFavorites))
                     Button(engine.text("Reset appearance", "Restablecer apariencia", "Redefinir aparência")) { engine.call("resetAppearance") }
+                }
+                Section(header: Text(engine.text("Playback diagnostics", "Diagnóstico de reproducción", "Diagnóstico de reprodução")), footer: Text(engine.text("The log contains connection type, playback events and error codes, but no song names or stream links.", "El registro contiene el tipo de conexión, eventos y códigos de error, sin nombres de canciones ni enlaces de reproducción.", "O registro contém o tipo de conexão, eventos e códigos de erro, sem nomes de músicas ou links de reprodução."))) {
+                    Button {
+                        PlaybackDiagnostics.shared.export { result in
+                            switch result {
+                            case .success(let url): shareFile = ShareFile(url: url)
+                            case .failure(let error): engine.error = error.localizedDescription
+                            }
+                        }
+                    } label: { Label(engine.text("Share playback log", "Compartir registro de reproducción", "Compartilhar registro de reprodução"), systemImage: "square.and.arrow.up") }
+                    Button(role: .destructive) {
+                        PlaybackDiagnostics.shared.clear { notice = engine.text("Playback log cleared.", "Registro de reproducción borrado.", "Registro de reprodução apagado.") }
+                    } label: { Label(engine.text("Clear playback log", "Borrar registro de reproducción", "Apagar registro de reprodução"), systemImage: "trash") }
                 }
                 Section(header: Text(engine.text("Your data", "Tus datos", "Seus dados")), footer: Text(engine.text("Move your library between Musike installations.", "Lleva tu biblioteca a otra instalación de Musike.", "Transfira sua biblioteca para outra instalação do Musike."))) {
                     Button { exportBackup() } label: { Label(engine.text("Export backup", "Exportar copia", "Exportar backup"), systemImage: "square.and.arrow.up") }.disabled(busy)
@@ -619,10 +740,16 @@ struct AlbumScreen: View {
 
 struct PlayerScreen: View {
     @ObservedObject var engine: NativeEngine
+    @ObservedObject private var diagnostics = PlaybackDiagnostics.shared
     @Environment(\.presentationMode) private var presentation
     @State private var queueOpen = false
     @State private var seeking = false
     @State private var seekValue: Double = 0
+    @State private var volumePreview: Double?
+    @State private var adjustingVolume = false
+    @State private var volumeRevision = 0
+    @State private var slowLoading = false
+    @State private var loadingRevision = 0
     var body: some View {
         NavigationView { GeometryReader { geometry in
             ScrollView { VStack(spacing: 22) {
@@ -640,15 +767,40 @@ struct PlayerScreen: View {
                         Button { engine.call("next") } label: { Image(systemName: "forward.end.fill").font(.title).frame(maxWidth: .infinity) }
                         Button { engine.call("repeat") } label: { Image(systemName: engine.player.repeat == "one" ? "repeat.1" : "repeat").foregroundColor(engine.player.repeat == "off" ? .secondary : engine.accent).frame(maxWidth: .infinity) }
                     }.buttonStyle(.plain)
-                    if engine.player.status == "loading" { ProgressView(engine.text("Loading…", "Cargando…", "Carregando…")) }
+                    if engine.player.status == "loading" {
+                        ProgressView(engine.text("Loading…", "Cargando…", "Carregando…"))
+                        if diagnostics.networkUnavailable {
+                            Text(engine.text("No network connection. Check your Wi-Fi or mobile data.", "Sin conexión de red. Comprueba el Wi-Fi o los datos móviles.", "Sem conexão de rede. Verifique o Wi-Fi ou os dados móveis."))
+                                .font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
+                        } else if slowLoading {
+                            Text(engine.text("Loading is taking longer than expected. Check your connection or try another network.", "La carga está tardando más de lo esperado. Comprueba la conexión o prueba otra red.", "O carregamento está demorando mais que o esperado. Verifique a conexão ou tente outra rede."))
+                                .font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
+                        }
+                    }
                     if engine.player.status == "error" {
-                        Text(engine.player.errorText ?? engine.text("Playback failed. Try again.", "No se pudo reproducir. Inténtalo de nuevo.", "Não foi possível reproduzir. Tente novamente.")).font(.caption).foregroundColor(.secondary)
+                        Text(diagnostics.networkUnavailable
+                             ? engine.text("No network connection. Check your Wi-Fi or mobile data.", "Sin conexión de red. Comprueba el Wi-Fi o los datos móviles.", "Sem conexão de rede. Verifique o Wi-Fi ou os dados móveis.")
+                             : (engine.player.errorText ?? engine.text("Playback failed. Check your connection or try again.", "No se pudo reproducir. Comprueba la conexión o inténtalo de nuevo.", "Não foi possível reproduzir. Verifique a conexão ou tente novamente.")))
+                            .font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
                         Button(engine.text("Retry", "Reintentar", "Tentar novamente")) { engine.call("toggle") }
                     }
                     HStack(spacing: 14) {
-                        Button { engine.call("mute") } label: { Image(systemName: engine.player.muted ? "speaker.slash.fill" : "speaker.fill") }
+                        Button {
+                            volumeRevision += 1
+                            volumePreview = nil
+                            engine.call("mute")
+                        } label: { Image(systemName: engine.player.muted ? "speaker.slash.fill" : "speaker.fill") }
                             .accessibilityLabel(engine.player.muted ? engine.text("Unmute", "Activar sonido", "Ativar som") : engine.text("Mute", "Silenciar", "Silenciar"))
-                        Slider(value: Binding(get: { engine.player.muted ? 0 : engine.player.volume }, set: { engine.call("volume", ["value": $0]) }), in: 0...1)
+                        Slider(value: Binding(get: { volumePreview ?? currentVolume }, set: setVolume), in: 0...1, onEditingChanged: { editing in
+                            adjustingVolume = editing
+                            if editing {
+                                volumeRevision += 1
+                                if volumePreview == nil { volumePreview = currentVolume }
+                            } else if let value = volumePreview {
+                                volumeRevision += 1
+                                commitVolume(value, revision: volumeRevision)
+                            }
+                        })
                             .accessibilityLabel(engine.text("Volume", "Volumen", "Volume"))
                         Image(systemName: "speaker.wave.3.fill").foregroundColor(.secondary)
                     }
@@ -676,11 +828,53 @@ struct PlayerScreen: View {
         }.navigationTitle(engine.text("Now playing", "En reproducción", "Tocando agora")).navigationBarTitleDisplayMode(.inline)
         .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button { presentation.wrappedValue.dismiss() } label: { Image(systemName: "chevron.down") } } }
         .sheet(isPresented: $queueOpen) { QueueScreen(engine: engine) }
+        .onAppear { updateLoadingNotice(engine.player.status) }
+        .onChange(of: engine.player.status) { updateLoadingNotice($0) }
         .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { engine.error != nil }, set: { if !$0 { engine.error = nil } })) {
             Button("OK", role: .cancel) { engine.error = nil }
         } message: { Text(engine.error ?? "") }
         }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark)
     }
+    private func updateLoadingNotice(_ status: String) {
+        loadingRevision += 1
+        let revision = loadingRevision
+        slowLoading = false
+        guard status == "loading" else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+            if revision == loadingRevision && engine.player.status == "loading" { slowLoading = true }
+        }
+    }
+
+    private var currentVolume: Double { engine.player.muted ? 0 : engine.player.volume }
+
+    private func setVolume(_ value: Double) {
+        volumePreview = value
+        volumeRevision += 1
+        if adjustingVolume {
+            engine.call("volume", ["value": value])
+        } else {
+            // Accessibility adjustments can change the value without starting a drag.
+            commitVolume(value, revision: volumeRevision)
+        }
+    }
+
+    private func commitVolume(_ value: Double, revision: Int) {
+        engine.call("volume", ["value": value]) { result in
+            guard revision == volumeRevision, !adjustingVolume else { return }
+            if case .failure(let error) = result {
+                volumePreview = nil
+                engine.error = error.localizedDescription
+                return
+            }
+            // Wait for a fresh player snapshot before handing the slider back to the shared state.
+            engine.call("state") { result in
+                guard revision == volumeRevision, !adjustingVolume else { return }
+                volumePreview = nil
+                if case .failure(let error) = result { engine.error = error.localizedDescription }
+            }
+        }
+    }
+
     func time(_ value: Double) -> String { guard value.isFinite && value >= 0 else { return "0:00" }; let seconds = Int(value); return String(format: "%d:%02d", seconds / 60, seconds % 60) }
 }
 struct QueueScreen: View {
@@ -708,6 +902,7 @@ final class MusikeRootController: UIViewController {
     private var appearanceObserver: AnyCancellable?
     override func viewDidLoad() {
         super.viewDidLoad()
+        PlaybackDiagnostics.shared.sessionStarted()
         addChild(runtime); runtime.view.frame = view.bounds; runtime.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(runtime.view); runtime.didMove(toParent: self)
         host = UIHostingController(rootView: NativeRoot(engine: runtime.nativeEngine))
         addChild(host); host.view.frame = view.bounds; host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(host.view); host.didMove(toParent: self)

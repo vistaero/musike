@@ -7,13 +7,16 @@ import { useUi } from "../stores/ui";
 import type { Track } from "../lib/types";
 import { createBackup, readBackup, restoreBackup, summarize } from "../lib/backup";
 import { isLang } from "../i18n";
+import { playbackDiagnostic } from "./diagnostics";
 
 /** SwiftUI talks to the same stores and backend as the existing app, including its on-device library. */
 export function installIosUI() {
   const handler = (globalThis as any).webkit?.messageHandlers?.musikeUI;
   if (!handler) return;
+  let lastStatus = "";
   const sendState = () => {
     const p = usePlayer.getState(), l = useLibrary.getState();
+    if (p.status !== lastStatus) { lastStatus = p.status; playbackDiagnostic(`player.status.${p.status}`); }
     handler.postMessage({ type: "state", player: {
       queue: p.queue, index: p.index, status: p.status, statusText: p.statusText,
       position: p.position, duration: p.duration, shuffle: p.shuffle, repeat: p.repeat, autoRadio: p.autoRadio,
@@ -36,6 +39,7 @@ export function installIosUI() {
       try {
         const p = usePlayer.getState(), l = useLibrary.getState();
         let result: unknown = null;
+        if (["playList", "toggle", "next", "previous", "jumpTo"].includes(action)) playbackDiagnostic(`command.${action.toLowerCase()}`);
         switch (action) {
           case "state": sendState(); break;
           case "search": result = args.kind === "album" ? await api.searchAlbums(args.query) : await api.search(args.query, args.kind); break;

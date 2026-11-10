@@ -20,7 +20,10 @@ final class MusikeAudio: NSObject, WKScriptMessageHandler {
     private var ended = false
     private var ticker: Any?
     private var statusObservation: NSKeyValueObservation?
+    private var controlObservation: NSKeyValueObservation?
     private var endObserver: NSObjectProtocol?
+    private var stalledObserver: NSObjectProtocol?
+    private var failedObserver: NSObjectProtocol?
 
     func attach(_ webView: WKWebView?) {
         self.webView = webView
@@ -61,6 +64,7 @@ final class MusikeAudio: NSObject, WKScriptMessageHandler {
     // MARK: - Playback
 
     private func load(_ link: String, startAt: Double) {
+        PlaybackDiagnostics.shared.record(link.isEmpty ? "audio.load.empty" : "audio.load.start")
         tearDown()
         guard let url = URL(string: link), !link.isEmpty else {
             emit("error", ["message": "No stream"])
@@ -86,18 +90,43 @@ final class MusikeAudio: NSObject, WKScriptMessageHandler {
             guard let self else { return }
             switch item.status {
             case .readyToPlay:
+                PlaybackDiagnostics.shared.record("audio.item.ready")
                 let seconds = CMTimeGetSeconds(item.duration)
                 self.emit("ready", ["duration": self.duration(from: seconds)])
                 if startAt > 0 { self.seek(startAt) }
             case .failed:
+                PlaybackDiagnostics.shared.record("audio.item.failed \(PlaybackDiagnostics.errorCode(item.error))")
+                if let log = item.errorLog()?.events.last {
+                    PlaybackDiagnostics.shared.record("audio.item.error-log status=\(log.errorStatusCode)")
+                }
                 self.emit("error", ["message": item.error?.localizedDescription ?? "Playback failed"])
             default:
                 break
             }
         }
+        controlObservation = newPlayer.observe(\.timeControlStatus, options: [.initial, .new]) { [weak self] player, _ in
+            let state: String
+            switch player.timeControlStatus {
+            case .paused: state = "paused"
+            case .waitingToPlayAtSpecifiedRate: state = "waiting"
+            case .playing: state = "playing"
+            @unknown default: state = "unknown"
+            }
+            PlaybackDiagnostics.shared.record("audio.control.\(state)")
+            if state == "waiting" { self?.emit("waiting") }
+            else if state == "playing" { self?.emit("playing") }
+        }
+        stalledObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemPlaybackStalled, object: newItem, queue: .main) { _ in
+            PlaybackDiagnostics.shared.record("audio.item.stalled")
+        }
+        failedObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemFailedToPlayToEndTime, object: newItem, queue: .main) { notification in
+            let error = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
+            PlaybackDiagnostics.shared.record("audio.item.failed-to-end \(PlaybackDiagnostics.errorCode(error))")
+        }
         endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime, object: newItem, queue: .main
         ) { [weak self] _ in
+            PlaybackDiagnostics.shared.record("audio.item.ended")
             self?.emit("ended")
         }
         ticker = newPlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
@@ -125,10 +154,14 @@ final class MusikeAudio: NSObject, WKScriptMessageHandler {
 
     private func play() {
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default)
-        try? session.setActive(true)
+        do {
+            try session.setCategory(.playback, mode: .default)
+            try session.setActive(true)
+        } catch {
+            PlaybackDiagnostics.shared.record("audio.session.failed \(PlaybackDiagnostics.errorCode(error))")
+        }
+        PlaybackDiagnostics.shared.record("audio.play.request has-player=\(player != nil)")
         player?.play()
-        emit("playing")
     }
 
     private func seek(_ to: Double) {
@@ -153,6 +186,11 @@ final class MusikeAudio: NSObject, WKScriptMessageHandler {
         if let ticker { player?.removeTimeObserver(ticker) }
         ticker = nil
         statusObservation = nil
+        controlObservation = nil
+        if let stalledObserver { NotificationCenter.default.removeObserver(stalledObserver) }
+        stalledObserver = nil
+        if let failedObserver { NotificationCenter.default.removeObserver(failedObserver) }
+        failedObserver = nil
         if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
         endObserver = nil
         player?.pause()

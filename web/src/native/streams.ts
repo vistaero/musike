@@ -5,6 +5,7 @@ import { getLang } from "../i18n";
 import { ApiError } from "../lib/apiTypes";
 import { config } from "./shims/config";
 import { nativeResolverAvailable, resolveNatively } from "./ytplayer";
+import { playbackDiagnostic } from "./diagnostics";
 
 /**
  * Resolves a track's audio on the phone, the job yt-dlp does on the server. On iOS the app's native side asks first
@@ -46,10 +47,12 @@ void fetchRemoteClients(REMOTE_KEY).then((remote) => {
 
 /** iOS: the native resolver, or null to fall back to the in-app clients. */
 async function resolveOnIos(id: string): Promise<DirectAudio | null> {
-  if (!nativeResolverAvailable()) return null;
+  if (!nativeResolverAvailable()) { if (ios) playbackDiagnostic("resolve.native.unavailable"); return null; }
   try {
+    playbackDiagnostic("resolve.native.start");
     const r = await resolveNatively(id, getLang(), config.location);
-    if (r.error || !r.url) return null;
+    if (r.error || !r.url) { playbackDiagnostic("resolve.native.failed"); return null; }
+    playbackDiagnostic("resolve.native.success");
     const expire = Number(new URL(r.url).searchParams.get("expire")) * 1000;
     return {
       url: r.url,
@@ -59,6 +62,7 @@ async function resolveOnIos(id: string): Promise<DirectAudio | null> {
       expiresAt: expire || Date.now() + 3 * 3600_000,
     };
   } catch {
+    playbackDiagnostic("resolve.native.exception");
     return null;
   }
 }
@@ -70,10 +74,13 @@ async function resolve(id: string): Promise<DirectAudio> {
     return native;
   }
   try {
+    if (ios) playbackDiagnostic("resolve.fallback.start");
     const resolved = await directAudio(id, clients, getLang());
+    if (ios) playbackDiagnostic("resolve.fallback.success");
     cache.set(id, resolved);
     return resolved;
   } catch (e) {
+    if (ios) playbackDiagnostic("resolve.fallback.failed");
     throw new ApiError(404, (e as Error).message || tr(getLang(), msg("noAudio")));
   }
 }
@@ -81,7 +88,10 @@ async function resolve(id: string): Promise<DirectAudio> {
 /** A track's stream, from cache while its URL is still good for a minute or more. */
 export function resolveAudio(id: string): Promise<DirectAudio> {
   const hit = cache.get(id);
-  if (hit && hit.expiresAt - Date.now() > 60_000) return Promise.resolve(hit);
+  if (hit && hit.expiresAt - Date.now() > 60_000) {
+    if (ios) playbackDiagnostic("resolve.cache.hit");
+    return Promise.resolve(hit);
+  }
   let job = inflight.get(id);
   if (!job) {
     job = resolve(id).finally(() => inflight.delete(id));

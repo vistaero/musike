@@ -53,6 +53,7 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
 
     /// The player, with a visitor id YouTube accepts.
     private func resolve(videoId: String, lang: String, region: String, done: @escaping ([String: Any]) -> Void) {
+        PlaybackDiagnostics.shared.record("resolver.start")
         visitor(lang: lang, region: region) { [weak self] visitorData in
             guard let self else { return }
             self.tryClient(videoId: videoId, visitorData: visitorData, lang: lang, region: region, at: 0, done: done)
@@ -64,15 +65,18 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
         done: @escaping ([String: Any]) -> Void
     ) {
         guard index < Self.clients.count else {
-            NSLog("Musike: every YouTube client was refused for %@", videoId)
+            PlaybackDiagnostics.shared.record("resolver.clients.exhausted")
             done(["error": "YouTube asked for an anti-bot check.", "code": "bot_check"])
             return
         }
         let client = Self.clients[index]
+        PlaybackDiagnostics.shared.record("resolver.client.start name=\(client.name)")
         let body = playerBody(videoId: videoId, visitorData: visitorData, lang: lang, region: region, client: client)
         post(Self.playerURL, body, client: client) { [weak self] result in
             guard let self else { return }
-            let status = (result?["playabilityStatus"] as? [String: Any])?["status"] as? String ?? "no answer"
+            let status = (result?["playabilityStatus"] as? [String: Any])?["status"] as? String ?? "no-answer"
+            let safeStatus = ["OK", "ERROR", "UNPLAYABLE", "LOGIN_REQUIRED", "LIVE_STREAM_OFFLINE", "no-answer"].contains(status) ? status : "other"
+            PlaybackDiagnostics.shared.record("resolver.client.result name=\(client.name) status=\(safeStatus)")
             guard status == "OK" else {
                 self.tryClient(videoId: videoId, visitorData: visitorData, lang: lang, region: region, at: index + 1, done: done)
                 return
@@ -82,9 +86,11 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
                 .filter { ($0["mimeType"] as? String)?.hasPrefix("audio/mp4") == true && $0["url"] != nil }
                 .sorted { Self.int($0["bitrate"]) > Self.int($1["bitrate"]) }
             guard let best = formats.first, let url = best["url"] as? String else {
+                PlaybackDiagnostics.shared.record("resolver.audio-format.missing")
                 done(["error": "No audio format available for this video.", "code": "no_audio"])
                 return
             }
+            PlaybackDiagnostics.shared.record("resolver.audio-format.selected")
             MusikeAudio.remember(url: url, duration: Double(Self.int(details["lengthSeconds"])))
             done([
                 "url": url,
@@ -128,6 +134,7 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
         let defaults = UserDefaults.standard
         let age = Date().timeIntervalSince1970 - defaults.double(forKey: Self.visitorAgeKey)
         if let cached = defaults.string(forKey: Self.visitorKey), !cached.isEmpty, age < Self.visitorTTL {
+            PlaybackDiagnostics.shared.record("resolver.visitor.cached")
             done(cached)
             return
         }
@@ -137,6 +144,7 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
                 defaults.set(fresh, forKey: Self.visitorKey)
                 defaults.set(Date().timeIntervalSince1970, forKey: Self.visitorAgeKey)
             }
+            PlaybackDiagnostics.shared.record(fresh.isEmpty ? "resolver.visitor.missing" : "resolver.visitor.fetched")
             done(fresh.isEmpty ? (defaults.string(forKey: Self.visitorKey) ?? "") : fresh)
             _ = self
         }
@@ -152,12 +160,22 @@ final class MusikeYouTube: NSObject, WKScriptMessageHandler {
         request.setValue("2", forHTTPHeaderField: "X-Goog-Api-Format-Version")
         request.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
-        URLSession(configuration: .ephemeral).downloadTask(with: request) { fileURL, _, error in
-            guard error == nil, let fileURL, let data = try? Data(contentsOf: fileURL) else {
+        let endpoint = url == Self.visitorURL ? "visitor" : "player"
+        URLSession(configuration: .ephemeral).downloadTask(with: request) { fileURL, response, error in
+            if let error {
+                PlaybackDiagnostics.shared.record("resolver.http.failed endpoint=\(endpoint) client=\(client.name) \(PlaybackDiagnostics.errorCode(error))")
                 done(nil)
                 return
             }
-            done(try? JSONSerialization.jsonObject(with: data) as? [String: Any])
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            PlaybackDiagnostics.shared.record("resolver.http.response endpoint=\(endpoint) client=\(client.name) status=\(status)")
+            guard let fileURL, let data = try? Data(contentsOf: fileURL),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                PlaybackDiagnostics.shared.record("resolver.http.invalid-response endpoint=\(endpoint)")
+                done(nil)
+                return
+            }
+            done(json)
         }.resume()
     }
 

@@ -454,7 +454,7 @@ Many videos have no combined SD version; the server downloads and merges video a
 Musike only accepts music videos from the artist's own channel, so it never plays covers or wrong versions. The song keeps playing as audio.
 
 **iPhone**
-iOS limits background playback for PWAs; Audio mode works better than Video.
+iOS limits background playback for PWAs; Audio mode works better than Video. In the iPhone app, a slow or unavailable network is shown in the player. To investigate playback, open Settings → Playback diagnostics, clear the log, reproduce the issue, and share the log. It contains connection type, playback events and error codes, but no song names, stream URLs, Wi-Fi names or IP addresses.
 
 ## Roadmap
 

@@ -185,6 +185,9 @@ class NativeAudio extends EventTarget {
         this.dispatchEvent(new Event("timeupdate"));
         this.dispatchEvent(new Event("progress"));
         break;
+      case "waiting":
+        if (!this._paused) this.dispatchEvent(new Event("waiting"));
+        break;
       case "playing":
         this._paused = false;
         this.readyState = 4;

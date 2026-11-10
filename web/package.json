@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "build:native": "tsc --noEmit -p tsconfig.native.json && vite build --mode native",
     "preview": "vite preview --host",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.native.json"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.native.json",
+    "test:native-audio": "node --experimental-transform-types --test tests/native-audio.test.mjs"
   },
   "dependencies": {
     "@capacitor/app": "8.1.2",

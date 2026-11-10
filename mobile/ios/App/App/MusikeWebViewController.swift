@@ -18,6 +18,8 @@ final class MusikeWebViewController: CAPBridgeViewController {
         webView?.configuration.userContentController.add(youtube, name: "musikeResolve")
         webView?.configuration.userContentController.add(audio, name: "musikeAudio")
         webView?.configuration.userContentController.add(nativeEngine, name: "musikeUI")
+        webView?.configuration.userContentController.add(PlaybackDiagnostics.shared, name: "musikeDiagnostics")
+        PlaybackDiagnostics.shared.record("web.bridge.loaded")
         nativeEngine.webView = webView
         playback.attach(webView)
         youtube.attach(webView)
