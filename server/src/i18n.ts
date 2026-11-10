@@ -3,7 +3,7 @@
  * They are kept as keys and translated when sent, so each device gets its own language.
  */
 
-export type Lang = "en" | "pt-BR";
+export type Lang = "en" | "pt-BR" | "es-ES";
 type Params = Record<string, string | number>;
 
 const en = {
@@ -106,7 +106,56 @@ const pt: Record<MsgKey, string> = {
   ffmpegPackage: "Pacote do FFmpeg inesperado.",
 };
 
-const CATALOG: Record<Lang, Record<MsgKey, string>> = { en, "pt-BR": pt };
+const es: Record<MsgKey, string> = {
+  invalidVideoId: "Identificador de vídeo no válido.",
+  emptyQuery: "Escribe algo para buscar.",
+  searchFailed: "La búsqueda no está disponible ahora ({detail}). Inténtalo de nuevo en un momento.",
+  missingTitle: "Indica el título de la canción.",
+  notBackup: "Este archivo no es una copia de seguridad de Musike.",
+  newerBackup: "Esta copia se creó con una versión más reciente de Musike. Actualiza la aplicación para importarla.",
+  idMismatch: "El identificador no coincide.",
+  tracksRequired: "Envía una lista de pistas.",
+  invalidGenre: "Género no válido.",
+  invalidOffset: "Posición no válida.",
+  invalidArtist: "Artista no válido.",
+  routeNotFound: "Ruta no encontrada.",
+  noFreePort: "No hay ningún puerto libre entre {from} y {to}.",
+  invalidTrack: "Pista no válida.",
+  playlistNotFound: "Lista de reproducción no encontrada.",
+  playlistNameRequired: "Ponle un nombre a la lista.",
+  genresUnavailable: "No se han podido cargar los géneros. Inténtalo de nuevo.",
+  genreUnavailable: "No se ha podido abrir este género. Inténtalo de nuevo.",
+  genreEmpty: "No se ha encontrado nada para este género.",
+  artistUnavailable: "No se ha podido abrir este artista. Inténtalo de nuevo.",
+  artistNotFound: "Artista no encontrado.",
+  albumUnavailable: "No se ha podido abrir este álbum. Inténtalo de nuevo.",
+  albumNotFound: "Álbum no encontrado.",
+  invalidAlbum: "Álbum no válido.",
+  ytdlpMissing: "No se ha encontrado yt-dlp en este ordenador. Abre los ajustes de Musike para instalarlo.",
+  ytdlpTimeout: "yt-dlp ha tardado demasiado en responder.",
+  ytdlpCantRun: "No se ha podido ejecutar yt-dlp ({error}). Abre los ajustes de Musike.",
+  botCheck: "YouTube solicita verificar que esta conexión no es un robot. Si usas una VPN, desactívala e inténtalo de nuevo.",
+  videoUnavailable: "Este vídeo no está disponible en YouTube.",
+  ageRestricted: "Vídeo con restricción de edad. Necesita cookies de una cuenta con sesión iniciada.",
+  ytdlpFailed: "yt-dlp ha fallado.",
+  ytdlpOutdated: "{detail} Es posible que YouTube haya cambiado: actualiza yt-dlp en los ajustes.",
+  noAudio: "No hay ningún formato de audio disponible para este vídeo.",
+  noSdVideo: "Este vídeo no tiene una versión SD combinada. Usa HD.",
+  streamRefused: "YouTube ha rechazado la transmisión (HTTP {status}). Prueba a actualizar yt-dlp en los ajustes.",
+  noWinget: "No se ha encontrado yt-dlp y winget no está disponible. Instálalo manualmente: https://github.com/yt-dlp/yt-dlp",
+  installingYtdlp: "Instalando yt-dlp",
+  updatingYtdlp: "Actualizando yt-dlp",
+  directUpdateFailed: "La actualización directa ha fallado; probando con winget",
+  downloadingTools: "Descargando yt-dlp y Deno desde GitHub",
+  alreadyLatest: "Ya tienes la última versión ({version})",
+  ytdlpReady: "yt-dlp {version} está listo para usar",
+  updateFailed: "No se ha podido actualizar yt-dlp.",
+  toolMissing: "No se ha encontrado {tool} en este ordenador.",
+  downloadFailed: "Ha fallado la descarga de {tool} (HTTP {status}).",
+  ffmpegPackage: "Paquete de FFmpeg inesperado.",
+};
+
+const CATALOG: Record<Lang, Record<MsgKey, string>> = { en, "pt-BR": pt, "es-ES": es };
 
 /** A message translated when it is sent: a key plus the values for its {placeholders}. */
 export interface Msg {
@@ -124,7 +173,7 @@ export function tr(lang: Lang, text: Text): string {
   return CATALOG[lang][text.key].replace(/\{(\w+)\}/g, (all, name: string) => String(text.params?.[name] ?? all));
 }
 
-export const isLang = (v: unknown): v is Lang => v === "en" || v === "pt-BR";
+export const isLang = (v: unknown): v is Lang => v === "en" || v === "pt-BR" || v === "es-ES";
 
 /** The language a request asked for. The app always says; anything else (media elements, curl) gets English. */
 export function langOf(req: { headers: Record<string, string | string[] | undefined> }): Lang {
@@ -133,4 +182,4 @@ export function langOf(req: { headers: Record<string, string | string[] | undefi
 }
 
 /** The code YouTube Music uses for its own words (genre names, artist bios). */
-export const youtubeLang = (lang: Lang) => (lang === "pt-BR" ? "pt" : "en");
+export const youtubeLang = (lang: Lang) => (lang === "pt-BR" ? "pt" : lang === "es-ES" ? "es" : "en");
