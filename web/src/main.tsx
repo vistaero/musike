@@ -9,9 +9,12 @@ import { desktop } from "./lib/desktop";
 import "./styles.css";
 import "./tv/tv.css";
 import { installTvMode } from "./tv/tvMode";
+import { installIosUI } from "./native/ios-ui";
 
 // The desktop app ships its files locally; a service worker would only risk serving an old version after updates.
 if (!desktop) registerSW({ immediate: true });
+
+installIosUI();
 
 // Android TV: spatial D-pad navigation + 10-foot styling (no-op elsewhere).
 installTvMode();

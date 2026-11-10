@@ -20,6 +20,7 @@
 		AA0000000000000000000003 /* MusikeWebViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000004 /* MusikeWebViewController.swift */; };
 		AA0000000000000000000006 /* MusikeYouTube.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000005 /* MusikeYouTube.swift */; };
 		AA0000000000000000000008 /* MusikeAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000007 /* MusikeAudio.swift */; };
+		AA0000000000000000000010 /* MusikeNativeUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000011 /* MusikeNativeUI.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +39,7 @@
 		AA0000000000000000000005 /* MusikeYouTube.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusikeYouTube.swift; sourceTree = "<group>"; };
 		AA0000000000000000000007 /* MusikeAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusikeAudio.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		AA0000000000000000000011 /* MusikeNativeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusikeNativeUI.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -77,6 +79,7 @@
 				AA0000000000000000000004 /* MusikeWebViewController.swift */,
 				AA0000000000000000000005 /* MusikeYouTube.swift */,
 				AA0000000000000000000007 /* MusikeAudio.swift */,
+				AA0000000000000000000011 /* MusikeNativeUI.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -176,6 +179,7 @@
 				AA0000000000000000000003 /* MusikeWebViewController.swift in Sources */,
 				AA0000000000000000000006 /* MusikeYouTube.swift in Sources */,
 				AA0000000000000000000008 /* MusikeAudio.swift in Sources */,
+				AA0000000000000000000010 /* MusikeNativeUI.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

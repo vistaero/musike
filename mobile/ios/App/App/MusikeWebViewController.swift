@@ -8,6 +8,7 @@ final class MusikeWebViewController: CAPBridgeViewController {
     private let playback = MusikePlayback()
     private let youtube = MusikeYouTube()
     private let audio = MusikeAudio()
+    let nativeEngine = NativeEngine()
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
@@ -16,6 +17,8 @@ final class MusikeWebViewController: CAPBridgeViewController {
         webView?.configuration.userContentController.add(playback, name: "musikeMedia")
         webView?.configuration.userContentController.add(youtube, name: "musikeResolve")
         webView?.configuration.userContentController.add(audio, name: "musikeAudio")
+        webView?.configuration.userContentController.add(nativeEngine, name: "musikeUI")
+        nativeEngine.webView = webView
         playback.attach(webView)
         youtube.attach(webView)
         audio.attach(webView)
