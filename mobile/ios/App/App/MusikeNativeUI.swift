@@ -106,12 +106,12 @@ struct Track: Codable, Identifiable, Hashable {
     let art: String
     let kind: String
 }
-struct Playlist: Codable, Identifiable {
+struct Playlist: Codable, Identifiable, Equatable {
     let id: String
     let name: String
     let tracks: [Track]
 }
-struct LibraryState: Decodable {
+struct LibraryState: Decodable, Equatable {
     var favorites: [Track] = []
     var history: [Track] = []
     var playlists: [Playlist] = []
@@ -164,7 +164,9 @@ final class NativeEngine: NSObject, ObservableObject, WKScriptMessageHandler {
         if type == "ready" { PlaybackDiagnostics.shared.record("web.bridge.ready"); ready = true; return }
         if type == "state", let data = try? JSONSerialization.data(withJSONObject: body),
            let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
-            player = snapshot.player; library = snapshot.library; appearance = snapshot.appearance; language = snapshot.lang; engineSettings = snapshot.engineSettings ?? false
+            player = snapshot.player
+            if library != snapshot.library { library = snapshot.library }
+            appearance = snapshot.appearance; language = snapshot.lang; engineSettings = snapshot.engineSettings ?? false
         } else if type == "response", let id = body["id"] as? Int, let callback = callbacks.removeValue(forKey: id) {
             if let message = body["error"] as? String { callback(.failure(NSError(domain: "Musike", code: 1, userInfo: [NSLocalizedDescriptionKey: message]))) }
             else { callback(.success(body["result"] ?? NSNull())) }
@@ -435,6 +437,10 @@ struct SettingsScreen: View {
                     } label: { Label(engine.text("Clear playback log", "Borrar registro de reproducción", "Apagar registro de reprodução"), systemImage: "trash") }
                 }
                 Section(header: Text(engine.text("Your data", "Tus datos", "Seus dados")), footer: Text(engine.text("Move your library between Musike installations.", "Lleva tu biblioteca a otra instalación de Musike.", "Transfira sua biblioteca para outra instalação do Musike."))) {
+                    #if targetEnvironment(macCatalyst)
+                    Text(engine.text("The JSON backup includes online library songs, playlists and favorites. Back up imported audio separately from the Musike Native folder in Application Support.", "La copia JSON incluye canciones en línea, listas y favoritos. Guarda aparte los archivos de audio importados de la carpeta Musike Native de Application Support.", "O backup JSON inclui músicas on-line, playlists e favoritas. Guarde os arquivos de áudio importados separadamente da pasta Musike Native em Application Support."))
+                        .font(.caption).foregroundColor(.secondary)
+                    #endif
                     Button { exportBackup() } label: { Label(engine.text("Export backup", "Exportar copia", "Exportar backup"), systemImage: "square.and.arrow.up") }.disabled(busy)
                     Button { importing = true } label: { Label(engine.text("Import backup", "Importar copia", "Importar backup"), systemImage: "square.and.arrow.down") }.disabled(busy)
                     if busy { ProgressView() }
@@ -514,7 +520,15 @@ struct SettingsScreen: View {
         engine.call("createBackup") { result in
             busy = false
             do {
-                let data = try JSONSerialization.data(withJSONObject: result.get(), options: [.prettyPrinted, .sortedKeys])
+                var backup = try result.get()
+                #if targetEnvironment(macCatalyst)
+                if var object = backup as? [String: Any] {
+                    object["macLibrary"] = engine.object(MacMusicLibrary.shared.onlineTracks)
+                    object["macAlbumInfo"] = engine.object(MacMusicLibrary.shared.onlineAlbumInfo)
+                    backup = object
+                }
+                #endif
+                let data = try JSONSerialization.data(withJSONObject: backup, options: [.prettyPrinted, .sortedKeys])
                 let formatter = DateFormatter(); formatter.dateFormat = "yyyy-MM-dd"
                 let url = FileManager.default.temporaryDirectory.appendingPathComponent("musike-backup-\(formatter.string(from: Date())).musike.json")
                 try data.write(to: url, options: .atomic)
@@ -544,7 +558,24 @@ struct SettingsScreen: View {
         engine.call("restoreBackup", ["backup": backup, "mode": importMode, "applySettings": applySettings]) { result in
             busy = false
             switch result {
-            case .success: pendingBackup = nil; preview = nil; notice = engine.text("Backup imported.", "Copia importada.", "Backup importado.")
+            case .success:
+                #if targetEnvironment(macCatalyst)
+                if let object = backup as? [String: Any], let tracks = object["macLibrary"],
+                   let data = try? JSONSerialization.data(withJSONObject: tracks),
+                   let restored = try? JSONDecoder().decode([Track].self, from: data) {
+                    var albums: [String: [MacMusicLibrary.AlbumInfo]] = [:]
+                    if let value = object["macAlbumInfo"], let bytes = try? JSONSerialization.data(withJSONObject: value) {
+                        albums = (try? JSONDecoder().decode([String: [MacMusicLibrary.AlbumInfo]].self, from: bytes)) ?? [:]
+                    }
+                    MacMusicLibrary.shared.restoreOnline(restored, albums: albums, replace: importMode == "replace")
+                } else {
+                    // Older and iOS backups do not have a separate Mac collection.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        MacMusicLibrary.shared.add(engine.library.favorites + engine.library.playlists.flatMap(\.tracks))
+                    }
+                }
+                #endif
+                pendingBackup = nil; preview = nil; notice = engine.text("Backup imported.", "Copia importada.", "Backup importado.")
             case .failure(let error): engine.error = error.localizedDescription
             }
         }
@@ -604,6 +635,8 @@ struct PreparedTrack: Decodable { let id: String; let title: String; let duratio
 
 struct SearchScreen: View {
     @ObservedObject var engine: NativeEngine
+    var externalQuery: String? = nil
+    var onQueryChange: ((String) -> Void)? = nil
     @State private var query = ""
     @State private var kind = "song"
     @State private var tracks: [Track] = []
@@ -700,8 +733,9 @@ struct SearchScreen: View {
             }.padding()
         }.navigationTitle(engine.text("Search", "Buscar", "Buscar"))
         .searchable(text: $query, prompt: Text(engine.text("Artists, songs, albums or a YouTube link", "Artistas, canciones, álbumes o enlace de YouTube", "Artistas, músicas, álbuns ou link do YouTube")))
-        .onChange(of: query) { _ in search(); suggest() }.onChange(of: kind) { _ in search() }
-        .onAppear { if engine.ready { loadGenres(); loadRecent() } }
+        .onChange(of: query) { value in onQueryChange?(value); search(); suggest() }.onChange(of: kind) { _ in search() }
+        .onChange(of: externalQuery) { value in if let value, value != query { query = value } }
+        .onAppear { if let externalQuery { query = externalQuery }; if engine.ready { loadGenres(); loadRecent(); if !query.isEmpty { search(); suggest() } } }
         .onChange(of: engine.ready) { ready in if ready { loadGenres(); loadRecent(); if !query.isEmpty { search(); suggest() } } }
         .onChange(of: engine.language) { _ in
             genres = []; genresError = nil
@@ -977,6 +1011,9 @@ struct TrackList: View {
                         }.contentShape(Rectangle())
                     }.buttonStyle(.plain)
                     Menu {
+                        #if targetEnvironment(macCatalyst)
+                        Button { MacMusicLibrary.shared.add([track]) } label: { Label(engine.text("Add to library", "Añadir a la biblioteca", "Adicionar à biblioteca"), systemImage: "plus") }
+                        #endif
                         Button { engine.track("favorite", track) } label: { Label(engine.library.favorites.contains(where: { $0.id == track.id }) ? engine.text("Remove favorite", "Quitar de favoritos", "Remover favorita") : engine.text("Add favorite", "Añadir a favoritos", "Adicionar às favoritas"), systemImage: "heart") }
                         Button { engine.track("playNext", track) } label: { Label(engine.text("Play next", "Reproducir a continuación", "Tocar a seguir"), systemImage: "text.line.first.and.arrowtriangle.forward") }
                         Button { engine.track("addToQueue", track) } label: { Label(engine.text("Add to queue", "Añadir a la cola", "Adicionar à fila"), systemImage: "text.badge.plus") }
@@ -1199,6 +1236,15 @@ struct AlbumScreen: View {
                         Button { engine.play(page.tracks) } label: { Label(engine.text("Play", "Reproducir", "Tocar"), systemImage: "play.fill") }.buttonStyle(.borderedProminent).tint(engine.accent).foregroundColor(.black)
                         Button { engine.play(page.tracks.shuffled()) } label: { Image(systemName: "shuffle") }.buttonStyle(.bordered)
                             .accessibilityLabel(engine.text("Shuffle album", "Reproducir álbum aleatoriamente", "Tocar álbum aleatoriamente"))
+                        #if targetEnvironment(macCatalyst)
+                        Button { let tracks = page.tracks.map { track in
+                            Track(id: track.id, title: track.title, artist: track.artist.isEmpty ? page.artist : track.artist,
+                                  album: page.title, duration: track.duration, thumb: track.thumb.isEmpty ? page.thumb : track.thumb,
+                                  art: track.art.isEmpty ? page.art : track.art, kind: track.kind)
+                        }
+                            MacMusicLibrary.shared.addAlbum(id: id, title: page.title, artist: page.artist, tracks: tracks)
+                        } label: { Label(engine.text("Add album to library", "Añadir álbum a la biblioteca", "Adicionar álbum à biblioteca"), systemImage: "plus") }
+                        #endif
                         if let savedPlaylist {
                             NavigationLink { PlaylistScreen(engine: engine, id: savedPlaylist) } label: { Image(systemName: "checkmark") }.buttonStyle(.bordered)
                                 .accessibilityLabel(engine.text("Open saved playlist", "Abrir lista guardada", "Abrir playlist salva"))
@@ -1442,15 +1488,21 @@ struct QueueScreen: View {
 }
 
 /// Hosts the bundled catalog, library and player engine behind the native interface.
+#if targetEnvironment(macCatalyst)
+typealias MusikePlatformRoot = MacRootView
+#else
+typealias MusikePlatformRoot = NativeRoot
+#endif
+
 final class MusikeRootController: UIViewController {
     private let runtime = MusikeWebViewController()
-    private var host: UIHostingController<NativeRoot>!
+    private var host: UIHostingController<MusikePlatformRoot>!
     private var appearanceObserver: AnyCancellable?
     override func viewDidLoad() {
         super.viewDidLoad()
         PlaybackDiagnostics.shared.sessionStarted()
         addChild(runtime); runtime.view.frame = view.bounds; runtime.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(runtime.view); runtime.didMove(toParent: self)
-        host = UIHostingController(rootView: NativeRoot(engine: runtime.nativeEngine))
+        host = UIHostingController(rootView: MusikePlatformRoot(engine: runtime.nativeEngine))
         addChild(host); host.view.frame = view.bounds; host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(host.view); host.didMove(toParent: self)
         appearanceObserver = runtime.nativeEngine.$appearance.map(\.theme).removeDuplicates().sink { [weak self] theme in
             self?.host.overrideUserInterfaceStyle = theme == "light" ? .light : .dark

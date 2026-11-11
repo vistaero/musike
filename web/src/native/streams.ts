@@ -68,6 +68,13 @@ async function resolveOnIos(id: string): Promise<DirectAudio | null> {
 }
 
 async function resolve(id: string): Promise<DirectAudio> {
+  // The Mac library may contain an imported file. Ask its native owner first;
+  // online tracks continue through the same resolver used on iOS.
+  const localResolver = (globalThis as { __musikeLocalResolve?: (id: string) => Promise<DirectAudio | null> }).__musikeLocalResolve;
+  if (localResolver) {
+    const local = await localResolver(id);
+    if (local) return local;
+  }
   const native = await resolveOnIos(id);
   if (native) {
     cache.set(id, native);

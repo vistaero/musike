@@ -8,6 +8,7 @@ final class MusikeWebViewController: UIViewController {
     private let youtube = MusikeYouTube()
     private let audio = MusikeAudio()
     private let transport = MacTransport()
+    private let localFiles = MacLocalFiles()
     private let assets = MacAssets()
     let nativeEngine = NativeEngine()
     private var engineView: WKWebView!
@@ -23,6 +24,7 @@ final class MusikeWebViewController: UIViewController {
         controller.add(nativeEngine, name: "musikeUI")
         controller.add(PlaybackDiagnostics.shared, name: "musikeDiagnostics")
         controller.add(transport, name: "musikeHTTP")
+        controller.add(localFiles, name: "musikeLocal")
         controller.addUserScript(WKUserScript(source: MacTransport.script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         engineView = WKWebView(frame: view.bounds, configuration: config)
         engineView.isHidden = true
@@ -32,6 +34,7 @@ final class MusikeWebViewController: UIViewController {
         youtube.attach(engineView)
         audio.attach(engineView)
         transport.webView = engineView
+        localFiles.webView = engineView
         engineView.load(URLRequest(url: URL(string: "capacitor://localhost/index.html")!))
 
     }
@@ -67,6 +70,15 @@ private final class MacTransport: NSObject, WKScriptMessageHandler {
         const entry = pending.get(id); if (!entry) return; pending.delete(id);
         error ? entry.reject(new Error(error)) : entry.resolve(result);
       };
+      let localNext = 0; const localPending = new Map();
+      window.__musikeLocalResolve = id => new Promise(resolve => {
+        const request = ++localNext; localPending.set(request, resolve);
+        window.webkit.messageHandlers.musikeLocal.postMessage({request, id});
+      });
+      window.__musikeLocalResponse = (request, result) => {
+        const resolve = localPending.get(request); if (!resolve) return;
+        localPending.delete(request); resolve(result);
+      };
     })();
     """
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -87,5 +99,21 @@ private final class MacTransport: NSObject, WKScriptMessageHandler {
             guard let json = try? JSONSerialization.data(withJSONObject: values), let encoded = String(data: json, encoding: .utf8) else { return }
             DispatchQueue.main.async { self?.webView?.evaluateJavaScript("window.__musikeHTTPResponse(...\(encoded))") }
         }.resume()
+    }
+}
+
+private final class MacLocalFiles: NSObject, WKScriptMessageHandler {
+    weak var webView: WKWebView?
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard let body = message.body as? [String: Any], let request = body["request"] as? Int,
+              let id = body["id"] as? String else { return }
+        let value: Any
+        if let url = MacMusicLibrary.shared.localURL(id) {
+            value = ["url": url.absoluteString, "mime": "audio", "title": "", "duration": 0,
+                     "expiresAt": Date().addingTimeInterval(365 * 24 * 3600).timeIntervalSince1970 * 1000] as [String: Any]
+        } else { value = NSNull() }
+        guard let data = try? JSONSerialization.data(withJSONObject: [request, value]),
+              let json = String(data: data, encoding: .utf8) else { return }
+        webView?.evaluateJavaScript("window.__musikeLocalResponse(...\(json))")
     }
 }
