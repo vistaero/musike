@@ -13,6 +13,8 @@ On first launch, songs from the previous Mac version's favorites and playlists
 are added to the new library. The collection can then be browsed by song,
 artist, album, favorites and playlist. Songs and albums from online search can
 be added to the library; local and online songs share the player and queues.
+Only one copy of the native Mac app can run at once; closing it or an
+unexpected termination releases the lock automatically.
 
 Install the workspace's Node.js dependencies first, then open
 `App/MusikeMac.xcodeproj` in Xcode and select **My Mac (Mac Catalyst)**. The

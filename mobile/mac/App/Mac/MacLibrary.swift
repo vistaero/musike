@@ -48,8 +48,7 @@ final class MacMusicLibrary: ObservableObject {
     private var indexFile: URL { directory.appendingPathComponent("library.json") }
 
     private init() {
-        directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Musike Native", isDirectory: true)
+        directory = MacInstanceLock.applicationDirectory
         if FileManager.default.fileExists(atPath: indexFile.path) {
             do {
                 let saved = try JSONDecoder().decode(Contents.self, from: Data(contentsOf: indexFile))

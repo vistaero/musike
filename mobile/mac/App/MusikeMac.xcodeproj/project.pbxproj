@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CC0000000000000000000015 /* MacInstanceLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000016 /* MacInstanceLock.swift */; };
 		CC0000000000000000000013 /* MacLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000014 /* MacLibrary.swift */; };
 		CC0000000000000000000011 /* MacLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000012 /* MacLayout.swift */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -23,6 +24,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		CC0000000000000000000016 /* MacInstanceLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../../mac/App/Mac/MacInstanceLock.swift; sourceTree = "<group>"; };
 		CC0000000000000000000014 /* MacLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../../mac/App/Mac/MacLibrary.swift; sourceTree = "<group>"; };
 		CC0000000000000000000012 /* MacLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../../mac/App/Mac/MacLayout.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
@@ -82,6 +84,7 @@
 				AA0000000000000000000011 /* MusikeNativeUI.swift */,
 				CC0000000000000000000012 /* MacLayout.swift */,
 				CC0000000000000000000014 /* MacLibrary.swift */,
+				CC0000000000000000000016 /* MacInstanceLock.swift */,
 				BB0000000000000000000002 /* BatchSearchModel.swift */,
 				BB0000000000000000000004 /* SearchUtilities.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
@@ -196,6 +199,7 @@
 				AA0000000000000000000010 /* MusikeNativeUI.swift in Sources */,
 				CC0000000000000000000011 /* MacLayout.swift in Sources */,
 				CC0000000000000000000013 /* MacLibrary.swift in Sources */,
+				CC0000000000000000000015 /* MacInstanceLock.swift in Sources */,
 				BB0000000000000000000001 /* BatchSearchModel.swift in Sources */,
 				BB0000000000000000000003 /* SearchUtilities.swift in Sources */,
 			);
