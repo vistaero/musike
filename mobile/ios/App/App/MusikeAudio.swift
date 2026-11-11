@@ -14,6 +14,8 @@ final class MusikeAudio: NSObject, WKScriptMessageHandler {
     /// audio-only streams, which would show a seven-minute song as fourteen.
     private static var knownDurations: [String: Double] = [:]
     private var player: AVPlayer?
+    private var volume: Float = 1
+    private var muted = false
     private var item: AVPlayerItem?
     private var knownDuration: Double?
     /// Set once the real end was reported, so a padded stream doesn't end a second time.
@@ -53,9 +55,11 @@ final class MusikeAudio: NSObject, WKScriptMessageHandler {
         case "seek":
             seek(body["to"] as? Double ?? 0)
         case "volume":
-            player?.volume = Float(body["value"] as? Double ?? 1)
+            volume = Float(body["value"] as? Double ?? 1)
+            player?.volume = volume
         case "muted":
-            player?.isMuted = body["value"] as? Bool ?? false
+            muted = body["value"] as? Bool ?? false
+            player?.isMuted = muted
         default:
             break
         }
@@ -82,7 +86,8 @@ final class MusikeAudio: NSObject, WKScriptMessageHandler {
         ended = false
         let newPlayer = AVPlayer(playerItem: newItem)
         newPlayer.automaticallyWaitsToMinimizeStalling = true
-        newPlayer.volume = player?.volume ?? 1
+        newPlayer.volume = volume
+        newPlayer.isMuted = muted
         player = newPlayer
         item = newItem
 

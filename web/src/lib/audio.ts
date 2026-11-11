@@ -68,12 +68,14 @@ class NativeAudio extends EventTarget {
   }
 
   set src(value: string) {
-    this._src = value;
+    // Server-backed builds provide relative stream paths; AVPlayer needs an absolute URL.
+    const absolute = value && typeof location !== "undefined" ? new URL(value, location.href).href : value;
+    this._src = absolute;
     this._ended = false;
     this.error = null;
     this.readyState = 0;
     this._bufferedEnd = 0;
-    this.bridge.postMessage({ cmd: "load", url: value });
+    this.bridge.postMessage({ cmd: "load", url: absolute });
   }
 
   get currentTime() {

@@ -22,4 +22,8 @@ test("the iOS player reports buffering and only starts after native playback beg
   globalThis.__musikeAudioEvent("waiting", {});
   assert.deepEqual(events, ["waiting", "playing"], "a late buffering event does not resume a paused player");
   assert.deepEqual(commands, ["load", "play", "pause"]);
+
+  globalThis.location = new URL("https://musike.example/search");
+  audio.src = "/api/stream/example/audio";
+  assert.equal(audio.src, "https://musike.example/api/stream/example/audio", "server stream paths become absolute for AVPlayer");
 });
