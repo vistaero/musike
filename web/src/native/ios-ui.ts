@@ -1,4 +1,4 @@
-import { api } from "../lib/api";
+import { api, capabilities } from "../lib/api";
 import { usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { useAppearance } from "../stores/appearance";
@@ -8,12 +8,6 @@ import type { Track } from "../lib/types";
 import { createBackup, readBackup, restoreBackup, summarize } from "../lib/backup";
 import { isLang } from "../i18n";
 import { playbackDiagnostic } from "./diagnostics";
-
-// Registered by the mounted router so native navigation uses React Router rather than exposing its last page.
-let openSearchList: (() => void) | undefined;
-export function setIosSearchListNavigator(navigate?: () => void) {
-  openSearchList = navigate;
-}
 
 /** SwiftUI talks to the same stores and backend as the existing app, including its on-device library. */
 export function installIosUI() {
@@ -29,7 +23,8 @@ export function installIosUI() {
       volume: p.volume, muted: p.muted, errorText: typeof p.statusText === "object" && p.statusText ? p.statusText.error : null,
     }, library: { favorites: l.favorites, history: l.history, playlists: l.playlists, status: l.status },
     appearance: { accent: useAppearance.getState().accent, homeShortcuts: useAppearance.getState().homeShortcuts,
-      homeRecent: useAppearance.getState().homeRecent, homeFavorites: useAppearance.getState().homeFavorites, theme: useUi.getState().theme }, lang: useI18n.getState().lang });
+      homeRecent: useAppearance.getState().homeRecent, homeFavorites: useAppearance.getState().homeFavorites, theme: useUi.getState().theme }, lang: useI18n.getState().lang,
+      engineSettings: capabilities.engineSettings });
   };
   let scheduled = false;
   const schedule = () => {
@@ -45,20 +40,44 @@ export function installIosUI() {
       try {
         const p = usePlayer.getState(), l = useLibrary.getState();
         let result: unknown = null;
-        if (["playList", "toggle", "next", "previous", "jumpTo"].includes(action)) playbackDiagnostic(`command.${action.toLowerCase()}`);
+        if (["playList", "playTrack", "toggle", "next", "previous", "jumpTo"].includes(action)) playbackDiagnostic(`command.${action.toLowerCase()}`);
         switch (action) {
           case "state": sendState(); break;
-          case "openSearchList":
-            if (!openSearchList) throw new Error("Search is still loading.");
-            openSearchList();
+          case "system": result = await api.system(); break;
+          case "updateEngine":
+            if (args.channel !== "stable" && args.channel !== "nightly") throw new Error("Invalid channel.");
+            result = await api.updateYtdlp(args.channel);
             break;
           case "search": result = args.kind === "album" ? await api.searchAlbums(args.query) : await api.search(args.query, args.kind); break;
+          case "suggest": result = await api.suggest(args.query); break;
+          case "prepare": result = await api.prepare(args.id); break;
+          case "recentSearches": {
+            try { const value: unknown = JSON.parse(localStorage.getItem("musike:recent-searches") ?? "[]");
+              result = Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").slice(0, 8) : [];
+            } catch { result = []; }
+            break;
+          }
+          case "recordRecentSearch": {
+            let previous: string[] = [];
+            try { const value: unknown = JSON.parse(localStorage.getItem("musike:recent-searches") ?? "[]");
+              if (Array.isArray(value)) previous = value.filter((item): item is string => typeof item === "string");
+            } catch { /* Start a new list if the stored value is invalid. */ }
+            const query = String(args.query ?? "").trim();
+            const next = query ? [query, ...previous.filter((item) => item.toLowerCase() !== query.toLowerCase())].slice(0, 8) : previous;
+            try { localStorage.setItem("musike:recent-searches", JSON.stringify(next)); } catch { /* Storage is optional. */ }
+            result = next;
+            break;
+          }
+          case "clearRecentSearches":
+            try { localStorage.setItem("musike:recent-searches", "[]"); } catch { /* Storage is optional. */ }
+            break;
           case "genres": result = await api.genres(); break;
           case "genre": result = await api.genre(args.id); break;
           case "genreArtists": result = await api.genreArtists(args.id, args.offset); break;
           case "artist": result = await api.artist(args.id); break;
           case "album": result = await api.album(args.id); break;
           case "playList": p.playList(args.tracks as Track[], args.index); break;
+          case "playTrack": p.playTrack(args.track as Track); break;
           case "toggle": p.toggle(); break;
           case "next": p.next(); break;
           case "previous": p.prev(); break;
@@ -98,6 +117,9 @@ export function installIosUI() {
           case "removeAt": p.removeAt(args.index); break;
           case "clearUpcoming": p.clearUpcoming(); break;
           case "favorite": await l.toggleFavorite(args.track); break;
+          case "batchAddFavorites": await api.addFavorites(args.tracks as Track[]); await l.load(); break;
+          case "batchAddToPlaylist": await api.addToPlaylist(args.id, args.tracks as Track[]); await l.load(); break;
+          case "batchCreatePlaylist": result = await api.createPlaylist(args.name, args.tracks as Track[]); await l.load(); break;
           case "createPlaylist": result = await l.createPlaylist(args.name); break;
           case "renamePlaylist": await l.renamePlaylist(args.id, args.name); break;
           case "deletePlaylist": await l.deletePlaylist(args.id); break;

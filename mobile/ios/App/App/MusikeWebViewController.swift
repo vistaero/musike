@@ -24,7 +24,5 @@ final class MusikeWebViewController: CAPBridgeViewController {
         playback.attach(webView)
         youtube.attach(webView)
         audio.attach(webView)
-        // Swipe from the left edge goes back, like the Android back button: dialogs close, then pages.
-        webView?.allowsBackForwardNavigationGestures = true
     }
 }

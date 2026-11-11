@@ -138,24 +138,24 @@ struct Appearance: Decodable {
     var homeRecent: Bool = true
     var homeFavorites: Bool = true
 }
-struct Snapshot: Decodable { var player: PlayerState; var library: LibraryState; var appearance: Appearance; var lang: String }
+struct Snapshot: Decodable { var player: PlayerState; var library: LibraryState; var appearance: Appearance; var lang: String; var engineSettings: Bool? }
 struct Genre: Decodable, Identifiable { let id: String; let name: String }
 struct AlbumCard: Decodable, Identifiable { let id: String; let title: String; let artist: String; let art: String; let thumb: String; let year: String }
-struct GenreArtist: Decodable, Identifiable { let id: String; let name: String; let art: String; let thumb: String }
+struct GenreArtist: Decodable, Identifiable { let id: String; let name: String; let art: String; let thumb: String; let hits: [String] }
 struct GenrePage: Decodable { let name: String; let artists: [GenreArtist]; let hasMoreArtists: Bool; let tracks: [Track] }
 struct MoreArtists: Decodable { let artists: [GenreArtist]; let hasMore: Bool }
 struct ArtistPage: Decodable { let name: String; let description: String; let tracks: [Track]; let albums: [AlbumCard]; let singles: [AlbumCard] }
-struct AlbumPage: Decodable { let title: String; let artist: String; let art: String; let thumb: String; let info: String; let tracks: [Track] }
+struct AlbumPage: Decodable { let title: String; let artist: String; let artistId: String?; let kind: String; let art: String; let thumb: String; let info: String; let tracks: [Track] }
 
 final class NativeEngine: NSObject, ObservableObject, WKScriptMessageHandler {
     @Published var player = PlayerState()
     @Published var library = LibraryState()
     @Published var appearance = Appearance()
     @Published var language = "en"
+    @Published var engineSettings = false
     @Published var ready = false
     @Published var error: String?
     weak var webView: WKWebView?
-    var showClassic: (() -> Void)?
     private var nextID = 0
     private var callbacks: [Int: (Result<Any, Error>) -> Void] = [:]
 
@@ -164,7 +164,7 @@ final class NativeEngine: NSObject, ObservableObject, WKScriptMessageHandler {
         if type == "ready" { PlaybackDiagnostics.shared.record("web.bridge.ready"); ready = true; return }
         if type == "state", let data = try? JSONSerialization.data(withJSONObject: body),
            let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
-            player = snapshot.player; library = snapshot.library; appearance = snapshot.appearance; language = snapshot.lang
+            player = snapshot.player; library = snapshot.library; appearance = snapshot.appearance; language = snapshot.lang; engineSettings = snapshot.engineSettings ?? false
         } else if type == "response", let id = body["id"] as? Int, let callback = callbacks.removeValue(forKey: id) {
             if let message = body["error"] as? String { callback(.failure(NSError(domain: "Musike", code: 1, userInfo: [NSLocalizedDescriptionKey: message]))) }
             else { callback(.success(body["result"] ?? NSNull())) }
@@ -191,14 +191,6 @@ final class NativeEngine: NSObject, ObservableObject, WKScriptMessageHandler {
                 }
                 return try JSONDecoder().decode(T.self, from: JSONSerialization.data(withJSONObject: value))
             } })
-        }
-    }
-    func openSearchList() {
-        call("openSearchList") { [weak self] result in
-            switch result {
-            case .success: self?.showClassic?()
-            case .failure(let error): self?.error = error.localizedDescription
-            }
         }
     }
     func object<T: Encodable>(_ value: T) -> Any { (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(value))) ?? [:] }
@@ -328,6 +320,16 @@ struct MiniPlayerSurface: ViewModifier {
     }
 }
 
+struct NativeSystemJob: Decodable { let status: String; let message: String; let log: [String] }
+struct NativeSystemInfo: Decodable {
+    struct Ytdlp: Decodable { let path: String?; let version: String?; let channel: String; let updateAvailable: Bool }
+    let ytdlp: Ytdlp
+    let deno: String?
+    let ffmpeg: String?
+    let canInstall: Bool
+    let job: NativeSystemJob?
+}
+
 struct BackupPreview: Decodable {
     let playlists: Int
     let playlistTracks: Int
@@ -356,6 +358,10 @@ struct SettingsScreen: View {
     @State private var busy = false
     @State private var shareFile: ShareFile?
     @State private var notice: String?
+    @State private var system: NativeSystemInfo?
+    @State private var systemBusy = false
+    @State private var channel = "stable"
+    @State private var settingsVisible = false
     private let colors = ["#c3ec52", "#34d399", "#22d3ee", "#60a5fa", "#a78bfa", "#f472b6", "#fb7c5c", "#fbbf24"]
 
     var body: some View {
@@ -396,6 +402,25 @@ struct SettingsScreen: View {
                     Toggle(engine.text("Your favorites", "Tus favoritos", "Suas favoritas"), isOn: setting("homeFavorites", engine.appearance.homeFavorites))
                     Button(engine.text("Reset appearance", "Restablecer apariencia", "Redefinir aparência")) { engine.call("resetAppearance") }
                 }
+                if engine.engineSettings {
+                    Section(header: Text(engine.text("Playback engine", "Motor de reproducción", "Motor de reprodução"))) {
+                        if let system {
+                            Text("yt-dlp · \(system.ytdlp.version ?? engine.text("Not installed", "No instalado", "Não instalado"))")
+                            Picker(engine.text("Channel", "Canal", "Canal"), selection: $channel) {
+                                Text(engine.text("Stable", "Estable", "Estável")).tag("stable")
+                                Text("Nightly").tag("nightly")
+                            }.pickerStyle(.segmented)
+                            if let job = system.job {
+                                Text(job.message).font(.caption).foregroundColor(.secondary)
+                                if !job.log.isEmpty { Text(job.log.joined(separator: "\n")).font(.caption.monospaced()).textSelection(.enabled) }
+                            }
+                            Button(system.ytdlp.path == nil ? engine.text("Install", "Instalar", "Instalar") : engine.text("Check for updates", "Buscar actualizaciones", "Buscar atualizações")) { updateEngine() }
+                                .disabled(systemBusy || system.job?.status == "running" || (system.ytdlp.path == nil && !system.canInstall))
+                            Text("Deno: \(system.deno == nil ? "—" : "✓") · FFmpeg: \(system.ffmpeg == nil ? "—" : "✓")").font(.caption).foregroundColor(.secondary)
+                        } else if systemBusy { ProgressView() }
+                        else { Button(engine.text("Load engine status", "Consultar estado del motor", "Consultar estado do motor")) { loadSystem() } }
+                    }
+                }
                 Section(header: Text(engine.text("Playback diagnostics", "Diagnóstico de reproducción", "Diagnóstico de reprodução")), footer: Text(engine.text("The log contains connection type, playback events and error codes, but no song names or stream links.", "El registro contiene el tipo de conexión, eventos y códigos de error, sin nombres de canciones ni enlaces de reproducción.", "O registro contém o tipo de conexão, eventos e códigos de erro, sem nomes de músicas ou links de reprodução."))) {
                     Button {
                         PlaybackDiagnostics.shared.export { result in
@@ -435,7 +460,9 @@ struct SettingsScreen: View {
             .navigationTitle(engine.text("Settings", "Ajustes", "Ajustes"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button(engine.text("Done", "Listo", "Concluído")) { presentation.wrappedValue.dismiss() } } }
-            .onAppear { customColor = Color(hex: engine.appearance.accent) }
+            .onAppear { settingsVisible = true; customColor = Color(hex: engine.appearance.accent); if engine.engineSettings { loadSystem() } }
+            .onDisappear { settingsVisible = false }
+            .onChange(of: engine.engineSettings) { enabled in if enabled && settingsVisible { loadSystem() } }
             .onChange(of: engine.appearance.accent) { customColor = Color(hex: $0) }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
                 switch result {
@@ -451,6 +478,29 @@ struct SettingsScreen: View {
             .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { engine.error != nil }, set: { if !$0 { engine.error = nil } })) { Button("OK", role: .cancel) { engine.error = nil } } message: { Text(engine.error ?? "") }
             .alert(engine.text("Backup", "Copia de seguridad", "Backup"), isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) { Button("OK", role: .cancel) { notice = nil } } message: { Text(notice ?? "") }
         }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark)
+    }
+    private func loadSystem() {
+        guard !systemBusy else { return }
+        systemBusy = true
+        engine.request("system") { (result: Result<NativeSystemInfo, Error>) in
+            systemBusy = false
+            switch result {
+            case .success(let value):
+                if system == nil { channel = value.ytdlp.channel }
+                system = value
+                if value.job?.status == "running" && settingsVisible {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { if settingsVisible { loadSystem() } }
+                }
+            case .failure(let failure): engine.error = failure.localizedDescription
+            }
+        }
+    }
+    private func updateEngine() {
+        systemBusy = true
+        engine.call("updateEngine", ["channel": channel]) { result in
+            systemBusy = false
+            switch result { case .success: loadSystem(); case .failure(let failure): engine.error = failure.localizedDescription }
+        }
     }
     func setting(_ key: String, _ value: Bool) -> Binding<Bool> {
         Binding(get: { value }, set: { engine.call("appearance", ["patch": [key: $0]]) })
@@ -509,10 +559,15 @@ struct HomeScreen: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 Text(engine.text("Your music, uninterrupted.", "Tu música, sin interrupciones.", "Sua música, sem interrupções.")).font(.subheadline).foregroundColor(.secondary)
-                if engine.appearance.homeShortcuts { HStack {
-                    NavigationLink { CollectionScreen(engine: engine, title: engine.text("Favorites", "Favoritos", "Favoritas"), tracks: engine.library.favorites) } label: { shortcut("heart.fill", engine.text("Favorites", "Favoritos", "Favoritas")) }
-                    NavigationLink { CollectionScreen(engine: engine, title: engine.text("Recently played", "Escuchado recientemente", "Ouvidas recentemente"), tracks: engine.library.history) } label: { shortcut("clock.arrow.circlepath", engine.text("Recent", "Recientes", "Recentes")) }
-                }.buttonStyle(.plain) }
+                if engine.appearance.homeShortcuts {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                        NavigationLink { CollectionScreen(engine: engine, title: engine.text("Favorites", "Favoritos", "Favoritas"), tracks: engine.library.favorites) } label: { shortcut("heart.fill", engine.text("Favorites", "Favoritos", "Favoritas")) }
+                        NavigationLink { CollectionScreen(engine: engine, title: engine.text("Recently played", "Escuchado recientemente", "Ouvidas recentemente"), tracks: engine.library.history) } label: { shortcut("clock.arrow.circlepath", engine.text("Recent", "Recientes", "Recentes")) }
+                        ForEach(Array(engine.library.playlists.prefix(6))) { playlist in
+                            NavigationLink { PlaylistScreen(engine: engine, id: playlist.id) } label: { shortcut("music.note.list", playlist.name) }
+                        }
+                    }.buttonStyle(.plain)
+                }
                 if !engine.ready || engine.library.status == "loading" { ProgressView().frame(maxWidth: .infinity).padding() }
                 else if engine.library.history.isEmpty && engine.library.favorites.isEmpty && engine.library.playlists.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -545,6 +600,8 @@ struct HomeScreen: View {
     }
 }
 
+struct PreparedTrack: Decodable { let id: String; let title: String; let duration: Double }
+
 struct SearchScreen: View {
     @ObservedObject var engine: NativeEngine
     @State private var query = ""
@@ -552,25 +609,82 @@ struct SearchScreen: View {
     @State private var tracks: [Track] = []
     @State private var albums: [AlbumCard] = []
     @State private var genres: [Genre] = []
+    @State private var genresError: String?
+    @State private var suggestions: [String] = []
+    @State private var recent: [String] = []
+    @State private var linkTrack: Track?
+    @State private var error: String?
     @State private var loading = false
+    @State private var searched = false
     @State private var requestID = 0
+    @StateObject private var batch = BatchSearchModel()
+    private var linkID: String? { SearchUtilities.youtubeID(query) }
+    private var terms: [String] { BatchSearchModel.terms(query) }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                Picker("Type", selection: $kind) {
-                    Text(engine.text("Songs", "Canciones", "Músicas")).tag("song")
-                    Text(engine.text("Videos", "Vídeos", "Vídeos")).tag("video")
-                    Text(engine.text("Albums", "Álbumes", "Álbuns")).tag("album")
-                }.pickerStyle(.segmented)
+                if linkID == nil {
+                    Picker(engine.text("Type", "Tipo", "Tipo"), selection: $kind) {
+                        Text(engine.text("Songs", "Canciones", "Músicas")).tag("song")
+                        Text(engine.text("Videos", "Vídeos", "Vídeos")).tag("video")
+                        Text(engine.text("Albums", "Álbumes", "Álbuns")).tag("album")
+                    }.pickerStyle(.segmented)
+                }
                 HStack {
-                    Spacer()
-                    Button { engine.openSearchList() } label: {
+                    NavigationLink {
+                        BatchSearchScreen(engine: engine, model: batch)
+                    } label: {
                         Label(engine.text("Search a list", "Buscar una lista", "Buscar lista"), systemImage: "list.bullet.rectangle")
                     }.buttonStyle(.bordered).accessibilityIdentifier("search-list")
+                    Spacer()
+                }
+                if linkID == nil && query.contains(",") && terms.count > 1 {
+                    NavigationLink {
+                        BatchSearchScreen(engine: engine, model: batch, initialText: query)
+                    } label: {
+                        Label(engine.text("Search each song separately", "Buscar cada canción por separado", "Buscar cada música separadamente"), systemImage: "list.bullet")
+                            .font(.subheadline).frame(maxWidth: .infinity, alignment: .leading).padding(12).musikeGlass(14)
+                    }.buttonStyle(.plain)
+                }
+                if !suggestions.isEmpty && linkID == nil {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack { ForEach(suggestions, id: \.self) { suggestion in
+                            Button(suggestion) { query = suggestion }.buttonStyle(.bordered)
+                        } }
+                    }
                 }
                 if loading { ProgressView().frame(maxWidth: .infinity).padding() }
-                else if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                else if let error {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(error).font(.subheadline).foregroundColor(.secondary)
+                        Button(engine.text("Retry", "Reintentar", "Tentar novamente")) { search() }.buttonStyle(.bordered)
+                    }
+                } else if let linkTrack {
+                    Button { engine.track("playTrack", linkTrack) } label: {
+                        HStack(spacing: 12) {
+                            Artwork(url: linkTrack.thumb, size: 64)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(engine.text("YouTube link", "Enlace de YouTube", "Link do YouTube")).font(.caption).foregroundColor(engine.accent)
+                                Text(linkTrack.title).font(.headline).lineLimit(2)
+                            }
+                            Spacer(); Image(systemName: "play.circle.fill").font(.title2)
+                        }.padding(12).musikeGlass(16)
+                    }.buttonStyle(.plain)
+                } else if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if !recent.isEmpty {
+                        HStack {
+                            Text(engine.text("Recent searches", "Búsquedas recientes", "Buscas recentes")).font(.title3.bold())
+                            Spacer()
+                            Button(engine.text("Clear", "Borrar", "Limpar")) { clearRecent() }.font(.caption)
+                        }
+                        ScrollView(.horizontal, showsIndicators: false) { HStack { ForEach(recent, id: \.self) { term in Button(term) { query = term }.buttonStyle(.bordered) } } }
+                    }
                     Text(engine.text("Explore genres", "Explorar géneros", "Explorar gêneros")).font(.title2.bold())
+                    if let genresError {
+                        Text(genresError).font(.caption).foregroundColor(.secondary)
+                        Button(engine.text("Retry", "Reintentar", "Tentar novamente")) { loadGenres() }.buttonStyle(.bordered)
+                    }
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 150))], spacing: 10) {
                         ForEach(genres) { genre in NavigationLink { GenreScreen(engine: engine, genre: genre) } label: {
                             Text(genre.name).font(.headline).frame(maxWidth: .infinity, minHeight: 70, alignment: .leading).padding(.horizontal).musikeGlass(16)
@@ -578,32 +692,269 @@ struct SearchScreen: View {
                     }
                 } else if kind == "album" {
                     ForEach(albums) { album in NavigationLink { AlbumScreen(engine: engine, id: album.id) } label: { AlbumRow(album: album) }.buttonStyle(.plain) }
-                } else { TrackList(engine: engine, tracks: tracks) }
+                    if searched && albums.isEmpty { noResults }
+                } else {
+                    TrackList(engine: engine, tracks: tracks)
+                    if searched && tracks.isEmpty { noResults }
+                }
             }.padding()
         }.navigationTitle(engine.text("Search", "Buscar", "Buscar"))
-        .searchable(text: $query, prompt: Text(engine.text("Artists, songs, albums", "Artistas, canciones, álbumes", "Artistas, músicas, álbuns")))
-        .onChange(of: query) { _ in search() }.onChange(of: kind) { _ in search() }
-        .onAppear { if genres.isEmpty && engine.ready { loadGenres() } }
-        .onChange(of: engine.ready) { ready in if ready { loadGenres() } }
+        .searchable(text: $query, prompt: Text(engine.text("Artists, songs, albums or a YouTube link", "Artistas, canciones, álbumes o enlace de YouTube", "Artistas, músicas, álbuns ou link do YouTube")))
+        .onChange(of: query) { _ in search(); suggest() }.onChange(of: kind) { _ in search() }
+        .onAppear { if engine.ready { loadGenres(); loadRecent() } }
+        .onChange(of: engine.ready) { ready in if ready { loadGenres(); loadRecent(); if !query.isEmpty { search(); suggest() } } }
+        .onChange(of: engine.language) { _ in
+            genres = []; genresError = nil
+            if engine.ready { loadGenres(); if !query.isEmpty { search(); suggest() } }
+        }
     }
-    func loadGenres() { engine.request("genres") { (result: Result<[Genre], Error>) in if case .success(let value) = result { genres = value } } }
+    private var noResults: some View { Text(engine.text("No results found.", "No se han encontrado resultados.", "Nenhum resultado encontrado.")).foregroundColor(.secondary).padding(.top) }
+    func loadGenres() {
+        guard genres.isEmpty else { return }
+        genresError = nil
+        engine.request("genres") { (result: Result<[Genre], Error>) in
+            switch result { case .success(let value): genres = value; case .failure(let failure): genresError = failure.localizedDescription }
+        }
+    }
+    func loadRecent() { engine.request("recentSearches") { (result: Result<[String], Error>) in if case .success(let value) = result { recent = value } } }
+    func clearRecent() { recent = []; engine.call("clearRecentSearches") }
+    func remember(_ text: String) { engine.request("recordRecentSearch", ["query": text]) { (result: Result<[String], Error>) in if case .success(let value) = result { recent = value } } }
+    func suggest() {
+        let current = requestID
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, linkID == nil, engine.ready else { suggestions = []; return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            guard current == requestID else { return }
+            engine.request("suggest", ["query": text]) { (result: Result<[String], Error>) in
+                guard current == requestID else { return }
+                if case .success(let values) = result { suggestions = Array(values.filter { $0.lowercased() != text.lowercased() }.prefix(6)) }
+            }
+        }
+    }
     func search() {
         requestID += 1; let current = requestID
-        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !term.isEmpty else { tracks = []; albums = []; loading = false; return }
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        tracks = []; albums = []; linkTrack = nil; error = nil; searched = false
+        guard !text.isEmpty else { loading = false; return }
+        guard engine.ready else { loading = false; return }
         loading = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
             guard current == requestID else { return }
-            if kind == "album" {
-                engine.request("search", ["query": term, "kind": kind]) { (result: Result<[AlbumCard], Error>) in
+            if let id = SearchUtilities.youtubeID(text) {
+                engine.request("prepare", ["id": id]) { (result: Result<PreparedTrack, Error>) in
                     guard current == requestID else { return }; loading = false
-                    switch result { case .success(let items): albums = items; case .failure(let error): engine.error = error.localizedDescription }
+                    switch result {
+                    case .success(let value): linkTrack = Track(id: value.id, title: value.title, artist: engine.text("YouTube link", "Enlace de YouTube", "Link do YouTube"), album: nil, duration: value.duration, thumb: "https://i.ytimg.com/vi/\(value.id)/mqdefault.jpg", art: "https://i.ytimg.com/vi/\(value.id)/hq720.jpg", kind: "video")
+                    case .failure(let failure): error = failure.localizedDescription
+                    }
+                }
+            } else if kind == "album" {
+                engine.request("search", ["query": text, "kind": kind]) { (result: Result<[AlbumCard], Error>) in
+                    guard current == requestID else { return }; loading = false; searched = true
+                    switch result { case .success(let items): albums = items; remember(text); case .failure(let failure): error = failure.localizedDescription }
                 }
             } else {
-                engine.request("search", ["query": term, "kind": kind]) { (result: Result<[Track], Error>) in
-                    guard current == requestID else { return }; loading = false
-                    switch result { case .success(let items): tracks = items; case .failure(let error): engine.error = error.localizedDescription }
+                engine.request("search", ["query": text, "kind": kind]) { (result: Result<[Track], Error>) in
+                    guard current == requestID else { return }; loading = false; searched = true
+                    switch result { case .success(let items): tracks = items; remember(text); case .failure(let failure): error = failure.localizedDescription }
                 }
+            }
+        }
+    }
+}
+
+struct ClearTextEditorBackground: ViewModifier {
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 16.0, *) { content.scrollContentBackground(.hidden) }
+        else { content }
+    }
+}
+
+struct BatchSearchScreen: View {
+    @ObservedObject var engine: NativeEngine
+    @ObservedObject var model: BatchSearchModel
+    var initialText: String? = nil
+    @State private var consumedInitial = false
+    @State private var playlistOpen = false
+    @State private var busy = false
+    @State private var notice: String?
+    @FocusState private var editing: Bool
+    private var terms: [String] { BatchSearchModel.terms(model.text) }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text(engine.text("Write songs separated by commas or one per line. You can include the artist.", "Escribe las canciones separadas por comas o una por línea. Puedes añadir el artista.", "Escreva as músicas separadas por vírgula ou uma por linha. Você pode incluir o artista."))
+                    .font(.subheadline).foregroundColor(.secondary)
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $model.text).modifier(ClearTextEditorBackground()).frame(minHeight: 120).focused($editing).padding(4)
+                    if model.text.isEmpty {
+                        Text(engine.text("E.g. Bohemian Rhapsody, Hotel California", "Por ejemplo: Bohemian Rhapsody, Hotel California", "Ex.: Evidências, Trem-Bala"))
+                            .foregroundColor(.secondary).padding(12).allowsHitTesting(false)
+                    }
+                }.background(Color(.secondarySystemBackground)).cornerRadius(16)
+                HStack {
+                    Text(terms.count == 50 ? engine.text("Up to 50 songs", "Hasta 50 canciones", "Até 50 músicas") : "\(terms.count) \(engine.text("songs", "canciones", "músicas"))")
+                        .font(.caption).foregroundColor(.secondary)
+                    Spacer()
+                    Button {
+                        editing = false
+                        model.run(using: engine)
+                    } label: { Label(engine.text("Search", "Buscar", "Buscar"), systemImage: "magnifyingglass") }
+                        .buttonStyle(.borderedProminent).tint(engine.accent).foregroundColor(.black)
+                        .disabled(terms.isEmpty || !engine.ready)
+                }
+                if model.entries.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(engine.text("Many songs at once", "Varias canciones a la vez", "Várias músicas de uma vez")).font(.title2.bold())
+                        Text(engine.text("Review the matches, choose alternatives and play or save the selection.", "Revisa los resultados, elige alternativas y reproduce o guarda la selección.", "Confira os resultados, escolha alternativas e toque ou salve a seleção.")).foregroundColor(.secondary)
+                    }.padding(18).frame(maxWidth: .infinity, alignment: .leading).musikeGlass()
+                } else {
+                    selectionControls
+                    LazyVStack(spacing: 8) {
+                        ForEach(model.entries) { entry in BatchEntryRow(engine: engine, model: model, entry: entry) }
+                    }
+                }
+            }.padding()
+        }
+        .navigationTitle(engine.text("Search a list", "Buscar una lista", "Buscar lista"))
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if !consumedInitial, let initialText, !initialText.isEmpty {
+                consumedInitial = true; model.text = initialText; model.run(using: engine)
+            }
+        }
+        .sheet(isPresented: $playlistOpen) {
+            BatchPlaylistPicker(engine: engine, tracks: model.selected) {
+                notice = engine.text("Added to playlist.", "Añadido a la lista.", "Adicionado à playlist.")
+            }
+        }
+        .alert(engine.text("Search a list", "Buscar una lista", "Buscar lista"), isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) {
+            Button("OK", role: .cancel) { notice = nil }
+        } message: { Text(notice ?? "") }
+    }
+    private var selectionControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Button { model.selectAll(!model.allSelected) } label: {
+                    Label(model.allSelected ? engine.text("Deselect all", "Deseleccionar todo", "Desmarcar todas") : engine.text("Select all", "Seleccionar todo", "Selecionar todas"), systemImage: model.allSelected ? "checkmark.square.fill" : "square")
+                }.disabled(model.found.isEmpty)
+                Spacer()
+                if model.pending { ProgressView().controlSize(.small) }
+                Text("\(model.selected.count) / \(model.entries.count)").font(.caption).foregroundColor(.secondary)
+            }
+            HStack {
+                Button { engine.play(model.selected.isEmpty ? model.found : model.selected) } label: { Label(engine.text("Play", "Reproducir", "Tocar"), systemImage: "play.fill") }
+                    .disabled(model.found.isEmpty)
+                Button { addFavorites() } label: { Image(systemName: "heart") }
+                    .accessibilityLabel(engine.text("Add to favorites", "Añadir a favoritos", "Adicionar às favoritas"))
+                    .disabled(model.selected.isEmpty || busy)
+                Button { playlistOpen = true } label: { Image(systemName: "text.badge.plus") }
+                    .accessibilityLabel(engine.text("Add to playlist", "Añadir a una lista", "Adicionar à playlist"))
+                    .disabled(model.selected.isEmpty || busy)
+                Spacer()
+            }.buttonStyle(.bordered)
+        }
+    }
+    private func addFavorites() {
+        busy = true
+        engine.call("batchAddFavorites", ["tracks": engine.object(model.selected)]) { result in
+            busy = false
+            switch result {
+            case .success: notice = engine.text("Added to favorites.", "Añadido a favoritos.", "Adicionado às favoritas.")
+            case .failure(let error): notice = error.localizedDescription
+            }
+        }
+    }
+}
+
+struct BatchEntryRow: View {
+    @ObservedObject var engine: NativeEngine
+    @ObservedObject var model: BatchSearchModel
+    let entry: BatchSearchModel.Entry
+    var body: some View {
+        HStack(spacing: 10) {
+            if entry.status == .loading {
+                ProgressView().frame(width: 38, height: 52)
+                Text(entry.query).foregroundColor(.secondary).lineLimit(2)
+                Spacer()
+            } else if let track = entry.track, entry.status == .ready {
+                Button { model.toggle(entry.id) } label: { Image(systemName: entry.selected ? "checkmark.circle.fill" : "circle").font(.title3).foregroundColor(entry.selected ? engine.accent : .secondary) }
+                    .accessibilityLabel(engine.text("Select", "Seleccionar", "Selecionar") + " " + track.title)
+                Button { engine.track("playTrack", track) } label: { Artwork(url: track.thumb, size: 48) }.buttonStyle(.plain)
+                Button { model.toggle(entry.id) } label: {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(track.title).font(.subheadline.bold()).lineLimit(1)
+                        Text(track.artist).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                        Text(entry.query).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }.buttonStyle(.plain)
+                if entry.options.count > 1 {
+                    Menu {
+                        ForEach(Array(entry.options.enumerated()), id: \.offset) { index, option in
+                            Button { model.choose(index, for: entry.id) } label: {
+                                if index == entry.pick { Label("\(option.title) · \(option.artist)", systemImage: "checkmark") }
+                                else { Text("\(option.title) · \(option.artist)") }
+                            }
+                        }
+                    } label: { Image(systemName: "arrow.triangle.2.circlepath").frame(width: 40, height: 44) }
+                        .accessibilityLabel(engine.text("Choose another result", "Elegir otro resultado", "Escolher outro resultado"))
+                }
+            } else {
+                Image(systemName: "exclamationmark.circle").foregroundColor(.secondary).frame(width: 38, height: 52)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(entry.query).font(.subheadline.bold()).lineLimit(2)
+                    Text(entry.status == .empty ? engine.text("Nothing found", "No se ha encontrado nada", "Nada encontrado") : engine.text("Search failed", "La búsqueda ha fallado", "A busca falhou"))
+                        .font(.caption).foregroundColor(.secondary)
+                }
+                Spacer()
+                Button(engine.text("Retry", "Reintentar", "Tentar novamente")) { model.retry(entry.id) }.buttonStyle(.bordered)
+            }
+        }.padding(.vertical, 4)
+    }
+}
+
+struct BatchPlaylistPicker: View {
+    @ObservedObject var engine: NativeEngine
+    let tracks: [Track]
+    var didAdd: () -> Void
+    @Environment(\.presentationMode) private var presentation
+    @State private var name = ""
+    @State private var busy = false
+    @State private var error: String?
+    var body: some View {
+        NavigationView {
+            Form {
+                Section(header: Text(engine.text("New playlist", "Nueva lista", "Nova playlist"))) {
+                    TextField(engine.text("Name", "Nombre", "Nome"), text: $name)
+                    Button(engine.text("Create and add", "Crear y añadir", "Criar e adicionar")) {
+                        perform("batchCreatePlaylist", ["name": name.trimmingCharacters(in: .whitespacesAndNewlines)])
+                    }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
+                }
+                if !engine.library.playlists.isEmpty {
+                    Section(header: Text(engine.text("Playlists", "Listas", "Playlists"))) {
+                        ForEach(engine.library.playlists) { playlist in
+                            Button(playlist.name) { perform("batchAddToPlaylist", ["id": playlist.id]) }.disabled(busy)
+                        }
+                    }
+                }
+                if busy { ProgressView() }
+            }.navigationTitle(engine.text("Add to playlist", "Añadir a una lista", "Adicionar à playlist"))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { ToolbarItem(placement: .navigationBarLeading) { Button(engine.text("Cancel", "Cancelar", "Cancelar")) { presentation.wrappedValue.dismiss() } } }
+                .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
+                    Button("OK", role: .cancel) { error = nil }
+                } message: { Text(error ?? "") }
+        }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark)
+    }
+    private func perform(_ action: String, _ args: [String: Any]) {
+        busy = true
+        var params = args; params["tracks"] = engine.object(tracks)
+        engine.call(action, params) { result in
+            busy = false
+            switch result {
+            case .success: presentation.wrappedValue.dismiss(); didAdd()
+            case .failure(let failure): error = failure.localizedDescription
             }
         }
     }
@@ -613,6 +964,7 @@ struct TrackList: View {
     @ObservedObject var engine: NativeEngine
     let tracks: [Track]
     var playlistID: String? = nil
+    @State private var playlistTrack: Track?
     var body: some View {
         LazyVStack(spacing: 2) {
             ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
@@ -628,12 +980,20 @@ struct TrackList: View {
                         Button { engine.track("favorite", track) } label: { Label(engine.library.favorites.contains(where: { $0.id == track.id }) ? engine.text("Remove favorite", "Quitar de favoritos", "Remover favorita") : engine.text("Add favorite", "Añadir a favoritos", "Adicionar às favoritas"), systemImage: "heart") }
                         Button { engine.track("playNext", track) } label: { Label(engine.text("Play next", "Reproducir a continuación", "Tocar a seguir"), systemImage: "text.line.first.and.arrowtriangle.forward") }
                         Button { engine.track("addToQueue", track) } label: { Label(engine.text("Add to queue", "Añadir a la cola", "Adicionar à fila"), systemImage: "text.badge.plus") }
-                        if !engine.library.playlists.isEmpty { Menu(engine.text("Add to playlist", "Añadir a lista", "Adicionar à playlist")) { ForEach(engine.library.playlists) { playlist in Button(playlist.name) { engine.track("addToPlaylist", track, extra: ["id": playlist.id]) } } } }
+                        Button { playlistTrack = track } label: { Label(engine.text("Add to playlist", "Añadir a lista", "Adicionar à playlist"), systemImage: "text.badge.plus") }
+                        Button {
+                            engine.call("startRadio", ["track": engine.object(track)]) { result in
+                                if case .failure(let failure) = result { engine.error = failure.localizedDescription }
+                            }
+                        } label: { Label(engine.text("Start radio", "Iniciar radio", "Iniciar rádio"), systemImage: "dot.radiowaves.left.and.right") }
+                        if let url = URL(string: "https://www.youtube.com/watch?v=\(track.id)") {
+                            Link(destination: url) { Label(engine.text("Open on YouTube", "Abrir en YouTube", "Abrir no YouTube"), systemImage: "arrow.up.right.square") }
+                        }
                         if let playlistID { Button(role: .destructive) { engine.call("removeFromPlaylist", ["id": playlistID, "trackId": track.id]) } label: { Label(engine.text("Remove from playlist", "Quitar de la lista", "Remover da playlist"), systemImage: "trash") } }
                     } label: { Image(systemName: "ellipsis").frame(width: 40, height: 48).contentShape(Rectangle()) }.accessibilityLabel(engine.text("Track options", "Opciones de la canción", "Opções da música"))
                 }.padding(.vertical, 5)
             }
-        }
+        }.sheet(item: $playlistTrack) { track in BatchPlaylistPicker(engine: engine, tracks: [track], didAdd: {}) }
     }
 }
 
@@ -650,16 +1010,38 @@ struct LibraryScreen: View {
             }
         }.buttonStyle(.plain).padding() }.navigationTitle(engine.text("Library", "Biblioteca", "Biblioteca"))
         .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Button { creating = true } label: { Image(systemName: "plus") }.accessibilityLabel(engine.text("New playlist", "Nueva lista", "Nova playlist")) } }
-        .alert(engine.text("New playlist", "Nueva lista", "Nova playlist"), isPresented: $creating) {
-            TextField(engine.text("Name", "Nombre", "Nome"), text: $name)
-            Button(engine.text("Create", "Crear", "Criar")) { let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines); if !trimmed.isEmpty { engine.call("createPlaylist", ["name": trimmed]) }; name = "" }
-            Button(engine.text("Cancel", "Cancelar", "Cancelar"), role: .cancel) { name = "" }
+        .sheet(isPresented: $creating) {
+            PlaylistNameSheet(engine: engine, name: $name, title: engine.text("New playlist", "Nueva lista", "Nova playlist"), action: engine.text("Create", "Crear", "Criar")) { value in
+                engine.call("createPlaylist", ["name": value]); name = ""
+            }
         }
     }
     func entry(_ icon: String, _ title: String, _ count: Int) -> some View {
         HStack(spacing: 14) { Image(systemName: icon).font(.title2).foregroundColor(engine.accent).frame(width: 60, height: 60).musikeGlass(14)
             VStack(alignment: .leading, spacing: 4) { Text(title).font(.headline); Text("\(count) \(engine.text("tracks", "canciones", "músicas"))").font(.caption).foregroundColor(.secondary) }; Spacer(); Image(systemName: "chevron.right").font(.caption).foregroundColor(.secondary)
         }.padding(.vertical, 5)
+    }
+}
+
+struct PlaylistNameSheet: View {
+    @ObservedObject var engine: NativeEngine
+    @Binding var name: String
+    let title: String
+    let action: String
+    var onSave: (String) -> Void
+    @Environment(\.presentationMode) private var presentation
+    var body: some View {
+        NavigationView {
+            Form { TextField(engine.text("Name", "Nombre", "Nome"), text: $name) }
+                .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) { Button(engine.text("Cancel", "Cancelar", "Cancelar")) { presentation.wrappedValue.dismiss() } }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button(action) { let value = name.trimmingCharacters(in: .whitespacesAndNewlines); onSave(value); presentation.wrappedValue.dismiss() }
+                            .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                }
+        }.navigationViewStyle(.stack).tint(engine.accent)
     }
 }
 
@@ -670,8 +1052,13 @@ struct CollectionScreen: View {
     var playlistID: String? = nil
     var body: some View {
         ScrollView { VStack(alignment: .leading, spacing: 16) {
-            if !tracks.isEmpty { Button { engine.play(tracks) } label: { Label(engine.text("Play", "Reproducir", "Tocar"), systemImage: "play.fill") }.buttonStyle(.borderedProminent).tint(engine.accent).foregroundColor(.black) }
-            else { Text(engine.text("No tracks yet.", "Todavía no hay canciones.", "Ainda não há músicas.")).foregroundColor(.secondary).padding(.top) }
+            if !tracks.isEmpty {
+                HStack {
+                    Button { engine.play(tracks) } label: { Label(engine.text("Play", "Reproducir", "Tocar"), systemImage: "play.fill") }.buttonStyle(.borderedProminent).tint(engine.accent).foregroundColor(.black)
+                    Button { engine.play(tracks.shuffled()) } label: { Image(systemName: "shuffle") }.buttonStyle(.bordered)
+                        .accessibilityLabel(engine.text("Shuffle", "Reproducción aleatoria", "Aleatório"))
+                }
+            } else { Text(engine.text("No tracks yet.", "Todavía no hay canciones.", "Ainda não há músicas.")).foregroundColor(.secondary).padding(.top) }
             TrackList(engine: engine, tracks: tracks, playlistID: playlistID)
         }.padding() }.navigationTitle(title)
     }
@@ -688,7 +1075,11 @@ struct PlaylistScreen: View {
             CollectionScreen(engine: engine, title: playlist.name, tracks: playlist.tracks, playlistID: id)
                 .toolbar { ToolbarItem(placement: .navigationBarTrailing) { Menu { Button(engine.text("Rename", "Renombrar", "Renomear")) { name = playlist.name; renaming = true }; Button(engine.text("Delete", "Eliminar", "Excluir"), role: .destructive) { deleting = true } } label: { Image(systemName: "ellipsis.circle") } } }
         } else { EmptyView() } }
-        .alert(engine.text("Rename playlist", "Renombrar lista", "Renomear playlist"), isPresented: $renaming) { TextField(engine.text("Name", "Nombre", "Nome"), text: $name); Button(engine.text("Save", "Guardar", "Salvar")) { if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { engine.call("renamePlaylist", ["id": id, "name": name]) } }; Button(engine.text("Cancel", "Cancelar", "Cancelar"), role: .cancel) {} }
+        .sheet(isPresented: $renaming) {
+            PlaylistNameSheet(engine: engine, name: $name, title: engine.text("Rename playlist", "Renombrar lista", "Renomear playlist"), action: engine.text("Save", "Guardar", "Salvar")) { value in
+                engine.call("renamePlaylist", ["id": id, "name": value])
+            }
+        }
         .alert(engine.text("Delete playlist?", "¿Eliminar lista?", "Excluir playlist?"), isPresented: $deleting) { Button(engine.text("Delete", "Eliminar", "Excluir"), role: .destructive) { engine.call("deletePlaylist", ["id": id]); presentation.wrappedValue.dismiss() }; Button(engine.text("Cancel", "Cancelar", "Cancelar"), role: .cancel) {} }
     }
 }
@@ -704,50 +1095,193 @@ struct GenreScreen: View {
     @State private var artists: [GenreArtist] = []
     @State private var hasMore = false
     @State private var loading = true
+    @State private var loadingMore = false
+    @State private var loadError: String?
+    @State private var loadRevision = 0
     var body: some View {
         ScrollView { VStack(alignment: .leading, spacing: 16) {
             if loading { ProgressView().frame(maxWidth: .infinity).padding() }
+            if let loadError {
+                Text(loadError).font(.caption).foregroundColor(.secondary)
+                Button(engine.text("Retry", "Reintentar", "Tentar novamente")) { if page == nil { load() } else { more() } }.buttonStyle(.bordered)
+            }
             if let page {
                 if !artists.isEmpty { Text(engine.text("Artists", "Artistas", "Artistas")).font(.title2.bold())
-                    ScrollView(.horizontal, showsIndicators: false) { HStack(alignment: .top, spacing: 14) { ForEach(artists) { artist in NavigationLink { ArtistScreen(engine: engine, id: artist.id) } label: { VStack { Artwork(url: artist.thumb, size: 112); Text(artist.name).font(.caption.bold()).lineLimit(2).frame(width: 112) } }.buttonStyle(.plain) } } }
-                    if hasMore { Button(engine.text("Load more", "Cargar más", "Carregar mais")) { more() } }
+                    ScrollView(.horizontal, showsIndicators: false) { HStack(alignment: .top, spacing: 14) { ForEach(artists) { artist in NavigationLink { ArtistScreen(engine: engine, id: artist.id) } label: { VStack(alignment: .leading, spacing: 4) { Artwork(url: artist.art.isEmpty ? artist.thumb : artist.art, size: 112); Text(artist.name).font(.caption.bold()).lineLimit(2); Text(artist.hits.joined(separator: " · ")).font(.caption2).foregroundColor(.secondary).lineLimit(2) }.frame(width: 112, alignment: .leading) }.buttonStyle(.plain) } } }
+                    if hasMore { Button(engine.text("Load more", "Cargar más", "Carregar mais")) { more() }.disabled(loadingMore) }
                 }
-                Text(engine.text("Songs", "Canciones", "Músicas")).font(.title2.bold()); TrackList(engine: engine, tracks: page.tracks)
+                Text(engine.text("Songs", "Canciones", "Músicas")).font(.title2.bold())
+                if page.tracks.isEmpty { Text(engine.text("No tracks found.", "No hay canciones.", "Nenhuma música encontrada.")).foregroundColor(.secondary) }
+                else { SelectableTracks(engine: engine, tracks: page.tracks) }
             }
-        }.padding() }.navigationTitle(genre.name).onAppear { if page == nil { load() } }
+        }.padding() }.navigationTitle(page?.name ?? genre.name).onAppear { if page == nil { load() } }
+        .onChange(of: engine.language) { _ in page = nil; artists = []; hasMore = false; load() }
     }
-    func load() { engine.request("genre", ["id": genre.id]) { (result: Result<GenrePage, Error>) in loading = false; switch result { case .success(let value): page = value; artists = value.artists; hasMore = value.hasMoreArtists; case .failure(let error): engine.error = error.localizedDescription } } }
-    func more() { engine.request("genreArtists", ["id": genre.id, "offset": artists.count]) { (result: Result<MoreArtists, Error>) in switch result { case .success(let value): artists.append(contentsOf: value.artists); hasMore = value.hasMore; case .failure(let error): engine.error = error.localizedDescription } } }
+    func load() {
+        loadRevision += 1; let revision = loadRevision
+        loading = true; loadingMore = false; loadError = nil
+        engine.request("genre", ["id": genre.id]) { (result: Result<GenrePage, Error>) in
+            guard revision == loadRevision else { return }
+            loading = false
+            switch result { case .success(let value): page = value; artists = value.artists; hasMore = value.hasMoreArtists; case .failure(let failure): loadError = failure.localizedDescription }
+        }
+    }
+    func more() {
+        guard !loadingMore else { return }
+        loadingMore = true; loadError = nil
+        let revision = loadRevision
+        engine.request("genreArtists", ["id": genre.id, "offset": artists.count]) { (result: Result<MoreArtists, Error>) in
+            guard revision == loadRevision else { return }
+            loadingMore = false
+            switch result {
+            case .success(let value):
+                var known = Set(artists.map(\.id))
+                artists.append(contentsOf: value.artists.filter { known.insert($0.id).inserted }); hasMore = value.hasMore
+            case .failure(let failure): loadError = failure.localizedDescription
+            }
+        }
+    }
 }
 struct ArtistScreen: View {
     @ObservedObject var engine: NativeEngine
     let id: String
     @State private var page: ArtistPage?
+    @State private var loadError: String?
+    @State private var loadRevision = 0
+    @State private var fullBio = false
     var body: some View {
         ScrollView { VStack(alignment: .leading, spacing: 16) {
             if let page {
-                if !page.description.isEmpty { Text(page.description).font(.subheadline).foregroundColor(.secondary).lineLimit(5) }
-                Text(engine.text("Songs", "Canciones", "Músicas")).font(.title2.bold()); TrackList(engine: engine, tracks: page.tracks)
+                if !page.description.isEmpty {
+                    Text(page.description).font(.subheadline).foregroundColor(.secondary).lineLimit(fullBio ? nil : 5)
+                    Button(fullBio ? engine.text("Show less", "Mostrar menos", "Mostrar menos") : engine.text("Read more", "Leer más", "Ler mais")) { fullBio.toggle() }.font(.caption)
+                }
+                Text(engine.text("Songs", "Canciones", "Músicas")).font(.title2.bold())
+                if page.tracks.isEmpty { Text(engine.text("No tracks found.", "No hay canciones.", "Nenhuma música encontrada.")).foregroundColor(.secondary) }
+                else { SelectableTracks(engine: engine, tracks: page.tracks) }
                 if !page.albums.isEmpty { Text(engine.text("Albums", "Álbumes", "Álbuns")).font(.title2.bold()); ForEach(page.albums) { album in NavigationLink { AlbumScreen(engine: engine, id: album.id) } label: { AlbumRow(album: album) }.buttonStyle(.plain) } }
                 if !page.singles.isEmpty { Text("Singles").font(.title2.bold()); ForEach(page.singles) { album in NavigationLink { AlbumScreen(engine: engine, id: album.id) } label: { AlbumRow(album: album) }.buttonStyle(.plain) } }
+            } else if let loadError {
+                Text(loadError).foregroundColor(.secondary)
+                Button(engine.text("Retry", "Reintentar", "Tentar novamente")) { load() }.buttonStyle(.bordered)
             } else { ProgressView().frame(maxWidth: .infinity).padding() }
-        }.padding() }.navigationTitle(page?.name ?? "").onAppear { if page == nil { engine.request("artist", ["id": id]) { (result: Result<ArtistPage, Error>) in switch result { case .success(let value): page = value; case .failure(let error): engine.error = error.localizedDescription } } } }
+        }.padding() }.navigationTitle(page?.name ?? "").onAppear { if page == nil { load() } }
+        .onChange(of: engine.language) { _ in page = nil; load() }
+    }
+    private func load() {
+        loadRevision += 1; let revision = loadRevision
+        loadError = nil
+        engine.request("artist", ["id": id]) { (result: Result<ArtistPage, Error>) in
+            guard revision == loadRevision else { return }
+            switch result { case .success(let value): page = value; case .failure(let failure): loadError = failure.localizedDescription }
+        }
     }
 }
 struct AlbumScreen: View {
     @ObservedObject var engine: NativeEngine
     let id: String
     @State private var page: AlbumPage?
+    @State private var loadError: String?
+    @State private var loadRevision = 0
+    @State private var saving = false
+    @State private var savedPlaylist: String?
     var body: some View {
         ScrollView { VStack(alignment: .leading, spacing: 16) {
             if let page {
                 HStack { Spacer(); Artwork(url: page.art.isEmpty ? page.thumb : page.art, size: 210); Spacer() }.padding(.vertical)
-                Text(page.title).font(.title.bold()); Text(page.artist + " · " + page.info).foregroundColor(.secondary)
-                Button { engine.play(page.tracks) } label: { Label(engine.text("Play", "Reproducir", "Tocar"), systemImage: "play.fill") }.buttonStyle(.borderedProminent).tint(engine.accent).foregroundColor(.black)
-                TrackList(engine: engine, tracks: page.tracks)
+                Text(page.title).font(.title.bold())
+                if let artistId = page.artistId, !page.artist.isEmpty {
+                    NavigationLink(page.artist) { ArtistScreen(engine: engine, id: artistId) }.font(.headline)
+                } else { Text(page.artist).font(.headline) }
+                Text([page.kind, page.info].filter { !$0.isEmpty }.joined(separator: " · ")).foregroundColor(.secondary)
+                if !page.tracks.isEmpty {
+                    HStack {
+                        Button { engine.play(page.tracks) } label: { Label(engine.text("Play", "Reproducir", "Tocar"), systemImage: "play.fill") }.buttonStyle(.borderedProminent).tint(engine.accent).foregroundColor(.black)
+                        Button { engine.play(page.tracks.shuffled()) } label: { Image(systemName: "shuffle") }.buttonStyle(.bordered)
+                            .accessibilityLabel(engine.text("Shuffle album", "Reproducir álbum aleatoriamente", "Tocar álbum aleatoriamente"))
+                        if let savedPlaylist {
+                            NavigationLink { PlaylistScreen(engine: engine, id: savedPlaylist) } label: { Image(systemName: "checkmark") }.buttonStyle(.bordered)
+                                .accessibilityLabel(engine.text("Open saved playlist", "Abrir lista guardada", "Abrir playlist salva"))
+                        } else {
+                            Button { save(page) } label: { Image(systemName: "text.badge.plus") }.buttonStyle(.bordered).disabled(saving)
+                                .accessibilityLabel(engine.text("Save as playlist", "Guardar como lista", "Salvar como playlist"))
+                        }
+                    }
+                    SelectableTracks(engine: engine, tracks: page.tracks)
+                } else { Text(engine.text("No tracks found.", "No hay canciones.", "Nenhuma música encontrada.")).foregroundColor(.secondary) }
+            } else if let loadError {
+                Text(loadError).foregroundColor(.secondary)
+                Button(engine.text("Retry", "Reintentar", "Tentar novamente")) { load() }.buttonStyle(.bordered)
             } else { ProgressView().frame(maxWidth: .infinity).padding() }
         }.padding() }.navigationTitle(page?.title ?? "").navigationBarTitleDisplayMode(.inline)
-        .onAppear { if page == nil { engine.request("album", ["id": id]) { (result: Result<AlbumPage, Error>) in switch result { case .success(let value): page = value; case .failure(let error): engine.error = error.localizedDescription } } } }
+        .onAppear { if page == nil { load() } }
+        .onChange(of: engine.language) { _ in page = nil; load() }
+    }
+    private func load() {
+        loadRevision += 1; let revision = loadRevision
+        loadError = nil
+        engine.request("album", ["id": id]) { (result: Result<AlbumPage, Error>) in
+            guard revision == loadRevision else { return }
+            switch result { case .success(let value): page = value; case .failure(let failure): loadError = failure.localizedDescription }
+        }
+    }
+    private func save(_ album: AlbumPage) {
+        saving = true
+        let name = album.artist.isEmpty ? album.title : "\(album.title) · \(album.artist)"
+        engine.request("batchCreatePlaylist", ["name": name, "tracks": engine.object(album.tracks)]) { (result: Result<Playlist, Error>) in
+            saving = false
+            switch result { case .success(let playlist): savedPlaylist = playlist.id; case .failure(let failure): engine.error = failure.localizedDescription }
+        }
+    }
+}
+
+struct SelectableTracks: View {
+    @ObservedObject var engine: NativeEngine
+    let tracks: [Track]
+    @State private var selected = Set<String>()
+    @State private var playlistOpen = false
+    @State private var busy = false
+    @State private var notice: String?
+    private var chosen: [Track] { tracks.filter { selected.contains($0.id) } }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Button {
+                    if selected.count == Set(tracks.map(\.id)).count { selected.removeAll() }
+                    else { selected = Set(tracks.map(\.id)) }
+                } label: { Label(engine.text("Select all", "Seleccionar todo", "Selecionar todas"), systemImage: "checkmark.circle") }
+                Spacer()
+                Text("\(chosen.count) / \(tracks.count)").font(.caption).foregroundColor(.secondary)
+            }
+            HStack {
+                Button { engine.play(chosen.isEmpty ? tracks : chosen) } label: { Label(engine.text("Play", "Reproducir", "Tocar"), systemImage: "play.fill") }
+                Button { addFavorites() } label: { Image(systemName: "heart") }.disabled(chosen.isEmpty || busy)
+                    .accessibilityLabel(engine.text("Add to favorites", "Añadir a favoritos", "Adicionar às favoritas"))
+                Button { playlistOpen = true } label: { Image(systemName: "text.badge.plus") }.disabled(chosen.isEmpty || busy)
+                    .accessibilityLabel(engine.text("Add to playlist", "Añadir a una lista", "Adicionar à playlist"))
+            }.buttonStyle(.bordered)
+            ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
+                HStack(spacing: 10) {
+                    Button { if !selected.insert(track.id).inserted { selected.remove(track.id) } } label: {
+                        Image(systemName: selected.contains(track.id) ? "checkmark.circle.fill" : "circle").foregroundColor(selected.contains(track.id) ? engine.accent : .secondary)
+                    }.accessibilityLabel(engine.text("Select", "Seleccionar", "Selecionar") + " " + track.title)
+                    Button { engine.play(tracks, at: index) } label: { Artwork(url: track.thumb, size: 48) }.buttonStyle(.plain)
+                    Button { if !selected.insert(track.id).inserted { selected.remove(track.id) } } label: {
+                        VStack(alignment: .leading, spacing: 3) { Text(track.title).font(.subheadline.bold()).lineLimit(1); Text(track.artist).font(.caption).foregroundColor(.secondary).lineLimit(1) }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }.buttonStyle(.plain)
+                }.padding(.vertical, 4)
+            }
+        }
+        .sheet(isPresented: $playlistOpen) { BatchPlaylistPicker(engine: engine, tracks: chosen) { notice = engine.text("Added to playlist.", "Añadido a la lista.", "Adicionado à playlist.") } }
+        .alert(engine.text("Selection", "Selección", "Seleção"), isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) { Button("OK", role: .cancel) { notice = nil } } message: { Text(notice ?? "") }
+    }
+    private func addFavorites() {
+        busy = true
+        engine.call("batchAddFavorites", ["tracks": engine.object(chosen)]) { result in
+            busy = false
+            switch result { case .success: notice = engine.text("Added to favorites.", "Añadido a favoritos.", "Adicionado às favoritas."); case .failure(let failure): notice = failure.localizedDescription }
+        }
     }
 }
 
@@ -907,11 +1441,10 @@ struct QueueScreen: View {
     }
 }
 
-/// Keeps the existing runtime alive behind SwiftUI. Its full interface remains available for advanced features.
+/// Hosts the bundled catalog, library and player engine behind the native interface.
 final class MusikeRootController: UIViewController {
     private let runtime = MusikeWebViewController()
     private var host: UIHostingController<NativeRoot>!
-    private let returnButton = UIButton(type: .system)
     private var appearanceObserver: AnyCancellable?
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -922,17 +1455,5 @@ final class MusikeRootController: UIViewController {
         appearanceObserver = runtime.nativeEngine.$appearance.map(\.theme).removeDuplicates().sink { [weak self] theme in
             self?.host.overrideUserInterfaceStyle = theme == "light" ? .light : .dark
         }
-        returnButton.setImage(UIImage(systemName: "chevron.left.circle.fill"), for: .normal)
-        returnButton.accessibilityLabel = "Return to native interface"
-        returnButton.tintColor = .systemBlue
-        returnButton.backgroundColor = .systemBackground
-        returnButton.layer.cornerRadius = 22
-        returnButton.addTarget(self, action: #selector(returnToNative), for: .touchUpInside)
-        returnButton.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(returnButton)
-        NSLayoutConstraint.activate([returnButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12), returnButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -90), returnButton.widthAnchor.constraint(equalToConstant: 44), returnButton.heightAnchor.constraint(equalToConstant: 44)])
-        returnButton.isHidden = true
-        runtime.nativeEngine.showClassic = { [weak self] in self?.host.view.isHidden = true; self?.returnButton.isHidden = false }
     }
-    @objc private func returnToNative() { host.view.isHidden = false; returnButton.isHidden = true }
 }
