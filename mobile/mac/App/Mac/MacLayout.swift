@@ -77,6 +77,7 @@ struct MacRootView: View {
     @State private var playlistName = ""
     @State private var catalog = MacCatalog()
     @State private var selectedArtist: String?
+    @State private var nativeToolbarInstalled = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -84,8 +85,10 @@ struct MacRootView: View {
                 sidebar.frame(width: geometry.size.width < 820 ? 185 : 218)
                 Rectangle().fill(Color.primary.opacity(0.14)).frame(width: 1)
                 VStack(spacing: 0) {
-                    MacPlaybackBar(engine: engine, queueShown: $queueShown, playerShown: $playerShown)
-                    Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
+                    if !nativeToolbarInstalled {
+                        MacPlaybackBar(engine: engine, queueShown: $queueShown, playerShown: $playerShown)
+                        Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
+                    }
                     HStack(spacing: 0) {
                         VStack(spacing: 0) {
                             pageHeader
@@ -100,7 +103,15 @@ struct MacRootView: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .background(Color(uiColor: .systemBackground))
+            .overlay(alignment: .topLeading) {
+                if #available(iOS 16.0, *) {
+                    MacToolbarInstaller(engine: engine, queueShown: $queueShown, playerShown: $playerShown,
+                                        installed: $nativeToolbarInstalled, windowWidth: geometry.size.width)
+                        .frame(width: 0, height: 0)
+                }
+            }
         }
+        .modifier(MacWindowSafeArea(extendTop: !nativeToolbarInstalled))
         .tint(engine.accent)
         .preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark)
         .onReceive(collection.$tracks) { catalog = MacCatalog($0, albumInfo: collection.albumInfo) }
@@ -127,7 +138,7 @@ struct MacRootView: View {
                 TextField(engine.text("Search", "Buscar", "Buscar"), text: $search, onEditingChanged: { active in if active { page = .search } })
                     .textFieldStyle(.plain)
                     .onChange(of: search) { value in if !value.isEmpty { page = .search } }
-            }.padding(7).background(Color.primary.opacity(0.08)).cornerRadius(7).padding(.horizontal, 12).padding(.top, 16).padding(.bottom, 14)
+            }.padding(7).background(Color.primary.opacity(0.08)).cornerRadius(7).padding(.horizontal, 12).padding(.top, nativeToolbarInstalled ? 16 : 54).padding(.bottom, 14)
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     sidebarHeading(engine.text("Library", "Biblioteca", "Biblioteca"))
@@ -239,10 +250,108 @@ struct MacRootView: View {
     }
 }
 
+private struct MacWindowSafeArea: ViewModifier {
+    let extendTop: Bool
+    func body(content: Content) -> some View {
+        content.ignoresSafeArea(.container, edges: extendTop ? .top : [])
+    }
+}
+
+/// The toolbar owns the existing SwiftUI player controls, including their bindings
+/// to the queue and player sheets. macOS keeps the window buttons aligned with it.
+@available(iOS 16.0, *)
+private struct MacToolbarInstaller: UIViewRepresentable {
+    @ObservedObject var engine: NativeEngine
+    @Binding var queueShown: Bool
+    @Binding var playerShown: Bool
+    @Binding var installed: Bool
+    let windowWidth: CGFloat
+
+    func makeUIView(context: Context) -> MacToolbarAnchor {
+        MacToolbarAnchor(engine: engine, queueShown: $queueShown, playerShown: $playerShown, installed: $installed)
+    }
+    func updateUIView(_ view: MacToolbarAnchor, context: Context) { view.updateWidth(windowWidth) }
+}
+
+@available(iOS 16.0, *)
+private struct MacToolbarContent: View {
+    @ObservedObject var engine: NativeEngine
+    @Binding var queueShown: Bool
+    @Binding var playerShown: Bool
+    let leadingSpace: CGFloat
+    var body: some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: leadingSpace)
+            MacPlaybackBar(engine: engine, queueShown: $queueShown, playerShown: $playerShown, height: 50)
+        }
+    }
+}
+
+@available(iOS 16.0, *)
+private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
+    private static let itemID = NSToolbarItem.Identifier("app.musike.playback")
+    private let engine: NativeEngine
+    private let queueShown: Binding<Bool>
+    private let playerShown: Binding<Bool>
+    private let installed: Binding<Bool>
+    private var toolbar: NSToolbar?
+    private var host: UIHostingController<MacToolbarContent>?
+    private var widthConstraint: NSLayoutConstraint?
+    private var lastWidth: CGFloat = 0
+
+    init(engine: NativeEngine, queueShown: Binding<Bool>, playerShown: Binding<Bool>, installed: Binding<Bool>) {
+        self.engine = engine; self.queueShown = queueShown; self.playerShown = playerShown; self.installed = installed
+        super.init(frame: .zero)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard toolbar == nil, let scene = window?.windowScene, let titlebar = scene.titlebar else { return }
+        let toolbar = NSToolbar(identifier: "app.musike.main")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        titlebar.titleVisibility = .hidden
+        titlebar.toolbarStyle = .unified
+        titlebar.toolbar = toolbar
+        self.toolbar = toolbar
+        DispatchQueue.main.async { self.installed.wrappedValue = true }
+    }
+
+    func updateWidth(_ width: CGFloat) {
+        guard width > 0, abs(width - lastWidth) > 1 else { return }
+        lastWidth = width
+        let toolbarWidth = max(450, width - 125)
+        widthConstraint?.constant = toolbarWidth
+        let sidebarWidth: CGFloat = width < 820 ? 185 : 218
+        host?.rootView = MacToolbarContent(engine: engine, queueShown: queueShown, playerShown: playerShown,
+                                           leadingSpace: max(0, sidebarWidth - 85))
+        host?.view.invalidateIntrinsicContentSize()
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [Self.itemID] }
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [Self.itemID] }
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard itemIdentifier == Self.itemID else { return nil }
+        let sidebarWidth: CGFloat = lastWidth < 820 ? 185 : 218
+        let host = UIHostingController(rootView: MacToolbarContent(engine: engine, queueShown: queueShown,
+            playerShown: playerShown, leadingSpace: max(0, sidebarWidth - 85)))
+        host.view.backgroundColor = .clear
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        let width = host.view.widthAnchor.constraint(equalToConstant: max(450, lastWidth - 125))
+        NSLayoutConstraint.activate([width, host.view.heightAnchor.constraint(equalToConstant: 50)])
+        widthConstraint = width
+        self.host = host
+        return NSUIViewToolbarItem(itemIdentifier: itemIdentifier, uiView: host.view)
+    }
+}
+
 private struct MacPlaybackBar: View {
     @ObservedObject var engine: NativeEngine
     @Binding var queueShown: Bool
     @Binding var playerShown: Bool
+    var height: CGFloat = 58
     @State private var seeking = false
     @State private var seekValue: Double = 0
     @State private var volumePreview: Double?
@@ -286,7 +395,7 @@ private struct MacPlaybackBar: View {
                 .buttonStyle(.plain).foregroundColor(queueShown ? engine.accent : .secondary)
                 .accessibilityLabel(engine.text("Queue", "Cola", "Fila"))
         }
-        .padding(.horizontal, 18).frame(height: 58)
+        .padding(.horizontal, 18).frame(height: height)
         .background(Color.primary.opacity(0.045))
     }
     private func control(_ symbol: String, _ action: String, active: Bool = false, size: CGFloat = 13) -> some View {
