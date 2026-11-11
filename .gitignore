@@ -2,6 +2,7 @@
 node_modules/
 dist/
 dist-native/
+dist-ios-server/
 dev-dist/
 desktop/dist/
 release/

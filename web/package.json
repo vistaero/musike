@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && vite build --mode ios-server && node scripts/merge-ios-server.mjs",
     "build:native": "tsc --noEmit -p tsconfig.native.json && vite build --mode native",
+    "build:ios": "tsc --noEmit -p tsconfig.native.json && vite build --mode ios",
     "preview": "vite preview --host",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.native.json",
-    "test:native-audio": "node --experimental-transform-types --test tests/native-audio.test.mjs"
+    "test:native-audio": "node --experimental-transform-types --test tests/native-*.test.mjs",
+    "test:ios-engine": "node --test tests/ios-engine.test.mjs"
   },
   "dependencies": {
     "@capacitor/app": "8.1.2",

@@ -1,5 +1,6 @@
 import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import type { SystemMedia } from "../lib/apiTypes";
+import { iosMedia } from "./ios-media";
 
 /**
  * Bridge to the app's Android side (MusikePlaybackPlugin.java): a foreground service with a media session,
@@ -23,19 +24,6 @@ const Playback = registerPlugin<PlaybackPlugin>("MusikePlayback", {
   // In a desktop browser (development), there is nothing to drive.
   web: () => ({ update: noop, addListener: async () => ({ remove: noop }) }),
 });
-
-/**
- * Bridge to the app's iOS side (ios/App/App/MusikePlayback.swift). iOS has no Capacitor plugin here: the web view's
- * own message handler carries the now-playing info, and the lock screen's buttons come back as
- * window.__musikeMediaAction(), the same actions the Android plugin sends.
- */
-interface MessageBridge {
-  postMessage(message: unknown): void;
-}
-
-const iosBridge = (
-  globalThis as { webkit?: { messageHandlers?: { musikeMedia?: MessageBridge } } }
-).webkit?.messageHandlers?.musikeMedia;
 
 // The system advances the position on its own while playing; only real changes need sending.
 let last = { playing: false, position: 0, at: 0 };
@@ -63,21 +51,4 @@ const androidMedia: SystemMedia = {
   },
 };
 
-const iosMedia: SystemMedia = {
-  setTrack(track) {
-    last = { playing: last.playing, position: 0, at: Date.now() };
-    iosBridge?.postMessage({ type: "track", ...track, position: 0 });
-  },
-  setState({ playing, position, duration }) {
-    if (!worthSending(playing, position)) return;
-    iosBridge?.postMessage({ type: "state", playing, position, duration: Number.isFinite(duration) ? duration : 0 });
-  },
-  onAction(handler) {
-    (globalThis as { __musikeMediaAction?: (action: string, position?: number) => void }).__musikeMediaAction = (
-      action,
-      position,
-    ) => handler(action as Parameters<typeof handler>[0], position);
-  },
-};
-
-export const media: SystemMedia = iosBridge ? iosMedia : androidMedia;
+export const media: SystemMedia = iosMedia ?? androidMedia;

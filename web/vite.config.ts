@@ -17,11 +17,12 @@ const same = (a: string, b: string) => path.normalize(a).toLowerCase() === path.
  * Musike server) becomes native/api.ts (the server's own code, running in the app), and the two server modules that
  * only make sense on a computer (paths/environment, yt-dlp) are replaced by small stand-ins.
  */
-function nativeBackend(): Plugin {
+function nativeBackend(ios: boolean): Plugin {
   const swaps: [from: string, to: string][] = [
     [src("lib", "api.ts"), src("native", "api.ts")],
     [server("config.ts"), src("native", "shims", "config.ts")],
     [server("ytdlp.ts"), src("native", "shims", "ytdlp.ts")],
+    ...(ios ? [[src("native", "android.ts"), src("native", "ios-noop.ts")] as [string, string]] : []),
   ];
   return {
     name: "musike-native-backend",
@@ -46,16 +47,30 @@ function nativeBackend(): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  const native = mode === "native";
+  const ios = mode === "ios";
+  const iosServer = mode === "ios-server";
+  const iosEngine = ios || iosServer;
+  const native = mode === "native" || ios;
   return {
     define: { __APP_VERSION__: JSON.stringify(version) },
-    build: native ? { outDir: "dist-native", emptyOutDir: true } : undefined,
+    build: iosServer ? { outDir: "dist-ios-server", emptyOutDir: true } : native ? { outDir: "dist-native", emptyOutDir: true } : undefined,
     plugins: [
       react(),
       tailwindcss(),
+      ...(iosEngine ? [{
+        name: "musike-ios-entry",
+        enforce: "pre" as const,
+        async resolveId(source: string, importer: string | undefined) {
+          if (source === "zustand") return this.resolve(src("native", "ios-store.ts"), importer, { skipSelf: true });
+          if (source === "virtual:pwa-register") return "\0musike-no-pwa";
+          return null;
+        },
+        load(id: string) { if (id === "\0musike-no-pwa") return "export const registerSW = () => () => {};"; },
+        transformIndexHtml: { order: "pre" as const, handler: (html: string) => html.replace("/src/main.tsx", "/src/native/ios-main.ts") },
+      } satisfies Plugin] : []),
       native
-        ? nativeBackend()
-        : VitePWA({
+        ? nativeBackend(ios)
+        : iosServer ? { name: "musike-no-ios-server-pwa" } : VitePWA({
             registerType: "autoUpdate",
             includeAssets: ["favicon.svg", "apple-touch-icon.png"],
             manifest: {
@@ -74,7 +89,7 @@ export default defineConfig(({ mode }) => {
               ],
             },
             workbox: {
-              navigateFallbackDenylist: [/^\/api\//],
+              navigateFallbackDenylist: [/^\/api\//, /^\/ios-engine\.html(?:[?#]|$)/],
               runtimeCaching: [
                 {
                   // Artwork only. Streams and API responses are never cached by the service worker.

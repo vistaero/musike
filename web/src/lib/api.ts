@@ -1,4 +1,5 @@
 import { getLang, getT } from "../i18n";
+import { iosMedia } from "../native/ios-media";
 import {
   ApiError,
   type Channel,
@@ -95,11 +96,11 @@ export async function saveFile(name: string, text: string) {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
-/** Only the Android app needs its own bridge to the system's media controls. */
-export const systemMedia: SystemMedia | null = null;
+/** The iOS app uses its native bridge even when its catalog comes from a server. */
+export const systemMedia: SystemMedia | null = iosMedia;
 
 /** What this build can do. The Android build has no video yet, no yt-dlp to manage, and retries expired streams. */
-export const capabilities = { video: true, engineSettings: true, retryOnError: false };
+export const capabilities = { video: !iosMedia, engineSettings: true, retryOnError: false };
 
 /** Media elements hide the HTTP error body; fetch it to show the real reason. */
 export async function explainStreamError(url: string): Promise<{ message: string; code?: ErrorCode }> {

@@ -25,9 +25,9 @@ const run = (cmd, args, cwd = app) => {
   if (r.status !== 0) process.exit(r.status ?? 1);
 };
 
-// The web app with the backend running inside the app, then the copy Capacitor makes of it for the Xcode project
+// The iOS engine without the web interface, then the copy Capacitor makes of it for the Xcode project
 // (from the folder with capacitor.config.ts).
-run("pnpm", ["--filter", "@musike/web", "build:native"], join(root, ".."));
+run("pnpm", ["--filter", "@musike/web", "build:ios"], join(root, ".."));
 run("pnpm", ["exec", "cap", "sync", "ios"], root);
 run("xcodebuild", [
   "-project", "App.xcodeproj",

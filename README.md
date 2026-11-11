@@ -90,7 +90,7 @@ Musike started from the idea behind the old Discord music bots: a server that fe
 - **Standalone:** no computer, no server. The phone searches YouTube Music and plays the audio straight from YouTube
 - Same app as on the computer: search, genres, artists, albums, Search a list, playlists, favorites, themes and colors
 - Keeps playing with the screen off, with controls in the notification, on the lock screen and on headphones; pauses for calls and when headphones are unplugged
-- **iPhone:** a SwiftUI interface with Liquid Glass on iOS 26 and translucent materials on iOS 15–25, installed with AltStore, SideStore or Sideloadly. Home, search, genres, artists, albums, library and playback use native views. The gear button opens native settings, including appearance, language and library backups. Advanced search features remain in the existing interface, accessible from Search. Both interfaces share the same library, queue and playback.
+- **iPhone:** a SwiftUI interface with Liquid Glass on iOS 26 and translucent materials on iOS 15–25, installed with AltStore, SideStore or Sideloadly. Search, list search, genres, artists, albums, library, settings and playback use native views. The app retains the shared catalog and playback engine and its existing library, without bundling the web interface in standalone iOS builds. Server-connected builds use a separate headless engine on the same server; update the server to the same version to enable it.
 - **Android TV:** the same app appears in the TV launcher and switches to a bigger interface you navigate with the remote
 - Audio only for now (no video mode)
 
