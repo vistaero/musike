@@ -17,12 +17,13 @@ const same = (a: string, b: string) => path.normalize(a).toLowerCase() === path.
  * Musike server) becomes native/api.ts (the server's own code, running in the app), and the two server modules that
  * only make sense on a computer (paths/environment, yt-dlp) are replaced by small stand-ins.
  */
-function nativeBackend(ios: boolean): Plugin {
+function nativeBackend(ios: boolean, mac: boolean): Plugin {
   const swaps: [from: string, to: string][] = [
     [src("lib", "api.ts"), src("native", "api.ts")],
     [server("config.ts"), src("native", "shims", "config.ts")],
     [server("ytdlp.ts"), src("native", "shims", "ytdlp.ts")],
     ...(ios ? [[src("native", "android.ts"), src("native", "ios-noop.ts")] as [string, string]] : []),
+    ...(mac ? [[src("native", "storage.ts"), src("native", "mac-storage.ts")] as [string, string]] : []),
   ];
   return {
     name: "musike-native-backend",
@@ -47,13 +48,14 @@ function nativeBackend(ios: boolean): Plugin {
 }
 
 export default defineConfig(({ mode }) => {
-  const ios = mode === "ios";
+  const mac = mode === "mac";
+  const ios = mode === "ios" || mac;
   const iosServer = mode === "ios-server";
   const iosEngine = ios || iosServer;
   const native = mode === "native" || ios;
   return {
     define: { __APP_VERSION__: JSON.stringify(version) },
-    build: iosServer ? { outDir: "dist-ios-server", emptyOutDir: true } : native ? { outDir: "dist-native", emptyOutDir: true } : undefined,
+    build: iosServer ? { outDir: "dist-ios-server", emptyOutDir: true } : mac ? { outDir: "dist-mac", emptyOutDir: true } : native ? { outDir: "dist-native", emptyOutDir: true } : undefined,
     plugins: [
       react(),
       tailwindcss(),
@@ -69,7 +71,7 @@ export default defineConfig(({ mode }) => {
         transformIndexHtml: { order: "pre" as const, handler: (html: string) => html.replace("/src/main.tsx", "/src/native/ios-main.ts") },
       } satisfies Plugin] : []),
       native
-        ? nativeBackend(ios)
+        ? nativeBackend(ios, mac)
         : iosServer ? { name: "musike-no-ios-server-pwa" } : VitePWA({
             registerType: "autoUpdate",
             includeAssets: ["favicon.svg", "apple-touch-icon.png"],

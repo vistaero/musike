@@ -1,5 +1,3 @@
-import { Capacitor } from "@capacitor/core";
-
 /**
  * Resolving tracks on iOS goes through the app's own network stack (ios/App/App/MusikeYouTube.swift): YouTube
  * bot-checks the web view's requests, and only the native one gets a URL the phone can read to the end.
@@ -21,7 +19,7 @@ const bridge = (
   globalThis as { webkit?: { messageHandlers?: { musikeResolve?: MessageBridge } } }
 ).webkit?.messageHandlers?.musikeResolve;
 
-export const nativeResolverAvailable = () => !!bridge && Capacitor.getPlatform() === "ios";
+export const nativeResolverAvailable = () => !!bridge;
 
 const pending = new Map<number, (result: ResolveResult) => void>();
 let sequence = 0;

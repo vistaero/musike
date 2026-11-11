@@ -2,6 +2,8 @@
 node_modules/
 dist/
 dist-native/
+dist-mac/
+mobile/mac/App/Mac/public/
 dist-ios-server/
 dev-dist/
 desktop/dist/

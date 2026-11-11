@@ -3,7 +3,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
 
-for (const [mode, backend] of [["ios", "/src/native/api.ts"], ["ios-server", "/src/lib/api.ts"]]) {
+for (const [mode, backend] of [["ios", "/src/native/api.ts"], ["ios-server", "/src/lib/api.ts"], ["mac", "/src/native/api.ts"]]) {
   test(`the ${mode} engine excludes the web UI and React`, async () => {
     const root = fileURLToPath(new URL("..", import.meta.url));
     const built = await build({ root, mode, logLevel: "silent", build: { write: false, minify: false } });
@@ -12,6 +12,10 @@ for (const [mode, backend] of [["ios", "/src/native/api.ts"], ["ios-server", "/s
     assert.ok(modules.some((id) => id.endsWith("/src/native/ios-main.ts")), "the iOS entry point must be used");
     assert.ok(modules.some((id) => id.endsWith("/src/native/ios-store.ts")), "the engine must use the headless store adapter");
     assert.ok(modules.some((id) => id.endsWith(backend)), "the expected backend must be used");
+    if (mode === "mac") {
+      assert.ok(modules.some((id) => id.endsWith("/src/native/mac-storage.ts")), "Mac must use its own persistent storage");
+      assert.ok(!modules.some((id) => id.endsWith("/src/native/storage.ts")), "Mac must not use the iOS filesystem plugin");
+    }
     const oldUI = modules.filter((id) => /\/src\/(views|components)\//.test(id) || /\/node_modules\/(?:\.pnpm\/)?(?:react|react-dom|react-router)(?:@|\/)/.test(id));
     assert.deepEqual(oldUI, [], `the iOS engine should not include web screens or React: ${oldUI.join(", ")}`);
   });

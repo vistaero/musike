@@ -1,5 +1,4 @@
 import AVFoundation
-import Capacitor
 import MediaPlayer
 import UIKit
 import WebKit

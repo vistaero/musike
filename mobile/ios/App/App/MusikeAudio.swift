@@ -1,5 +1,4 @@
 import AVFoundation
-import Capacitor
 import WebKit
 
 /// Plays audio natively, so the music doesn't go through the web view's media stack.
