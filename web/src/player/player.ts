@@ -39,6 +39,7 @@ interface PlayerState {
   preferVideo: boolean;
   quality: Quality;
   autoRadio: boolean;
+  dislikedTrackIDs: string[];
 
   playList: (tracks: Track[], start?: number) => void;
   playTrack: (track: Track) => void;
@@ -59,6 +60,7 @@ interface PlayerState {
   setPreferVideo: (on: boolean) => void;
   setQuality: (q: Quality) => void;
   setAutoRadio: (on: boolean) => void;
+  toggleDislikedTrack: (id: string) => void;
 }
 
 // Media elements live outside React so playback survives any re-render or route change.
@@ -92,6 +94,7 @@ interface Saved {
   preferVideo: boolean;
   quality: Quality;
   autoRadio: boolean;
+  dislikedTrackIDs: string[];
 }
 
 function readSaved(): Partial<Saved> {
@@ -134,6 +137,12 @@ function lookupClip(track: Track): Promise<string | null> {
 
 const needsClipLookup = (track: Track, preferVideo: boolean) =>
   preferVideo && track.kind === "song" && !clipFor.has(track.id);
+
+export async function radioTracks(seedID: string): Promise<Track[]> {
+  const related = await api.radio(seedID);
+  const excluded = new Set([seedID, ...usePlayer.getState().dislikedTrackIDs]);
+  return related.filter((track) => !excluded.has(track.id));
+}
 
 export const usePlayer = create<PlayerState>((set, get) => {
   const kindFor = (track: Track): Kind =>
@@ -225,7 +234,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     set({ status: "loading", statusText: "fetchingRadio" });
     try {
       const known = new Set(get().queue.map((t) => t.id));
-      const more = (await api.radio(last.id)).filter((t) => !known.has(t.id)).slice(0, 25);
+      const more = (await radioTracks(last.id)).filter((t) => !known.has(t.id)).slice(0, 25);
       if (!more.length) throw new Error("empty");
       set((st) => ({
         queue: [...st.queue, ...more],
@@ -383,6 +392,7 @@ export const usePlayer = create<PlayerState>((set, get) => {
     preferVideo: capabilities.video && (saved.preferVideo ?? false),
     quality: saved.quality ?? "sd",
     autoRadio: saved.autoRadio ?? true,
+    dislikedTrackIDs: Array.isArray(saved.dislikedTrackIDs) ? saved.dislikedTrackIDs : [],
 
     playList: (tracks, start = 0) => {
       if (!tracks.length) return;
@@ -457,8 +467,8 @@ export const usePlayer = create<PlayerState>((set, get) => {
     startRadio: async (track) => {
       toast(getT().player.startingRadio(track.title));
       try {
-        const related = await api.radio(track.id);
-        get().playList([track, ...related.filter((t) => t.id !== track.id)], 0);
+        const related = await radioTracks(track.id);
+        get().playList([track, ...related], 0);
       } catch (e) {
         toast((e as Error).message, "error");
       }
@@ -553,6 +563,11 @@ export const usePlayer = create<PlayerState>((set, get) => {
     },
 
     setAutoRadio: (autoRadio) => set({ autoRadio }),
+    toggleDislikedTrack: (id) => {
+      const ids = get().dislikedTrackIDs;
+      set({ dislikedTrackIDs: ids.includes(id) ? ids.filter((value) => value !== id) : [...ids, id] });
+      persist();
+    },
   };
 });
 
@@ -579,6 +594,7 @@ function persist() {
     preferVideo: s.preferVideo,
     quality: s.quality,
     autoRadio: s.autoRadio,
+    dislikedTrackIDs: s.dislikedTrackIDs,
   };
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));

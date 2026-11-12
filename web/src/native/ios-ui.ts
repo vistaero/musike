@@ -1,5 +1,5 @@
 import { api, capabilities } from "../lib/api";
-import { usePlayer } from "../player/player";
+import { radioTracks, usePlayer } from "../player/player";
 import { useLibrary } from "../stores/library";
 import { useAppearance } from "../stores/appearance";
 import { useI18n } from "../i18n";
@@ -20,6 +20,7 @@ export function installIosUI() {
     handler.postMessage({ type: "state", player: {
       queue: p.queue, index: p.index, status: p.status, statusText: p.statusText,
       position: p.position, duration: p.duration, shuffle: p.shuffle, repeat: p.repeat, autoRadio: p.autoRadio,
+      currentDisliked: p.dislikedTrackIDs.includes(p.queue[p.index]?.id),
       volume: p.volume, muted: p.muted, errorText: typeof p.statusText === "object" && p.statusText ? p.statusText.error : null,
     }, library: { favorites: l.favorites, history: l.history, playlists: l.playlists, status: l.status },
     appearance: { accent: useAppearance.getState().accent, homeShortcuts: useAppearance.getState().homeShortcuts,
@@ -87,10 +88,11 @@ export function installIosUI() {
           case "autoRadio": p.setAutoRadio(args.enabled); break;
           case "startRadio": {
             const track = args.track as Track;
-            const related = await api.radio(track.id);
-            p.playList([track, ...related.filter((item) => item.id !== track.id)], 0);
+            const related = await radioTracks(track.id);
+            p.playList([track, ...related], 0);
             break;
           }
+          case "dislike": if (typeof args.id === "string" && args.id) p.toggleDislikedTrack(args.id); break;
           case "volume": p.setVolume(args.value); break;
           case "mute": p.toggleMute(); break;
           case "theme": if (args.value === "dark" || args.value === "light") useUi.getState().setTheme(args.value); break;

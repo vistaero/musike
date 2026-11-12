@@ -5,6 +5,12 @@ import UniformTypeIdentifiers
 private enum MacPage: Equatable {
     case recent, songs, artists, albums, favorites, search
     case playlist(String), artist(String), album(String)
+    case currentSong(Track)
+}
+
+private struct MacSongReveal: Equatable {
+    let trackID: String
+    private let request = UUID()
 }
 
 private struct MacAlbum: Identifiable {
@@ -75,6 +81,10 @@ struct MacRootView: View {
     @State private var importShown = false
     @State private var createShown = false
     @State private var playlistName = ""
+    @State private var playlistSeed: Track?
+    @State private var trackInformation: Track?
+    @State private var exportTrack: Track?
+    @State private var revealSong: MacSongReveal?
     @State private var catalog = MacCatalog()
     @State private var selectedArtist: String?
     @State private var nativeToolbarInstalled = false
@@ -94,7 +104,7 @@ struct MacRootView: View {
                         Rectangle().fill(Color.primary.opacity(0.14)).frame(width: 1)
                         VStack(spacing: 0) {
                             MacPlaybackBar(engine: engine, queueShown: $queueShown, playerShown: $playerShown,
-                                           compact: geometry.size.width < 840)
+                                           compact: geometry.size.width < 840, onAction: nowPlayingAction)
                             Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
                             libraryContent(windowWidth: geometry.size.width)
                         }
@@ -105,7 +115,7 @@ struct MacRootView: View {
             .overlay(alignment: .topLeading) {
                 if #available(iOS 16.4, *) {
                     MacToolbarInstaller(engine: engine, queueShown: $queueShown, playerShown: $playerShown,
-                                        installed: $nativeToolbarInstalled, windowWidth: geometry.size.width)
+                                        installed: $nativeToolbarInstalled, windowWidth: geometry.size.width, onAction: nowPlayingAction)
                         .frame(width: 0, height: 0)
                 }
             }
@@ -116,14 +126,20 @@ struct MacRootView: View {
         .onReceive(engine.$library) { collection.migrateLegacy($0) }
         .sheet(isPresented: $settingsShown) { SettingsScreen(engine: engine) }
         .sheet(isPresented: $playerShown) { PlayerScreen(engine: engine) }
+        .sheet(item: $trackInformation) { track in MacTrackInformation(engine: engine, track: track) }
         .sheet(isPresented: $createShown) {
             PlaylistNameSheet(engine: engine, name: $playlistName, title: engine.text("New playlist", "Nueva lista", "Nova playlist"), action: engine.text("Create", "Crear", "Criar")) { name in
-                engine.call("createPlaylist", ["name": name]); playlistName = ""
+                if let track = playlistSeed {
+                    playlistAction("batchCreatePlaylist", ["name": name, "tracks": engine.object([track])])
+                } else {
+                    playlistAction("createPlaylist", ["name": name])
+                }
+                playlistName = ""
+                playlistSeed = nil
             }
         }
-        .fileImporter(isPresented: $importShown, allowedContentTypes: [.audio], allowsMultipleSelection: true) { result in
-            switch result { case .success(let urls): collection.importFiles(urls); case .failure(let error): collection.error = error.localizedDescription }
-        }
+        .fileImporter(isPresented: $importShown, allowedContentTypes: exportTrack == nil ? [.audio] : [.folder],
+                      allowsMultipleSelection: exportTrack == nil, onCompletion: handleFileSelection)
         .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { engine.error != nil || collection.error != nil }, set: { if !$0 { engine.error = nil; collection.error = nil } })) {
             Button("OK", role: .cancel) { engine.error = nil; collection.error = nil }
         } message: { Text(collection.error ?? engine.error ?? "") }
@@ -167,7 +183,7 @@ struct MacRootView: View {
                     HStack {
                         sidebarHeading(engine.text("Playlists", "Listas", "Playlists"))
                         Spacer()
-                        Button { createShown = true } label: { Image(systemName: "plus") }.buttonStyle(.plain)
+                        Button { playlistSeed = nil; createShown = true } label: { Image(systemName: "plus") }.buttonStyle(.plain)
                             .accessibilityLabel(engine.text("New playlist", "Nueva lista", "Nova playlist"))
                     }.padding(.trailing, 11)
                     ForEach(engine.library.playlists) { playlist in
@@ -177,7 +193,7 @@ struct MacRootView: View {
             }
             Spacer(minLength: 0)
             if collection.importing { ProgressView().controlSize(.small).padding(.horizontal, 14).padding(.bottom, 4) }
-            Button { importShown = true } label: {
+            Button { exportTrack = nil; importShown = true } label: {
                 Label(engine.text("Import music", "Importar música", "Importar música"), systemImage: "square.and.arrow.down")
                     .frame(maxWidth: .infinity, alignment: .leading).padding(8)
             }.buttonStyle(.plain).disabled(collection.importing)
@@ -194,7 +210,7 @@ struct MacRootView: View {
             .padding(.horizontal, 8).padding(.top, 12).padding(.bottom, 3)
     }
     private func sidebarItem(_ item: MacPage, _ icon: String, _ title: String) -> some View {
-        Button { page = item; filter = ""; selectedArtist = nil } label: {
+        Button { page = item; filter = ""; selectedArtist = nil; revealSong = nil } label: {
             HStack(spacing: 8) {
                 Image(systemName: icon).foregroundColor(engine.accent).frame(width: 18)
                 Text(title).lineLimit(1); Spacer(minLength: 0)
@@ -227,6 +243,7 @@ struct MacRootView: View {
         case .albums: return engine.text("Albums", "Álbumes", "Álbuns")
         case .favorites: return engine.text("Favorites", "Favoritos", "Favoritas")
         case .search: return engine.text("Search", "Buscar", "Buscar")
+        case .currentSong: return engine.text("Current Song", "Canción actual", "Música atual")
         case .playlist(let id): return engine.library.playlists.first(where: { $0.id == id })?.name ?? ""
         case .artist(let name): return name
         case .album(let id): return catalog.albums.first(where: { $0.id == id })?.title ?? ""
@@ -246,7 +263,9 @@ struct MacRootView: View {
                 if let album = item.album { page = .album(album.id) } else { engine.play([item.track]) }
             })
         case .songs:
-            MacSongsView(engine: engine, tracks: catalog.tracks.filter(matches), collection: collection)
+            MacSongsView(engine: engine, tracks: catalog.tracks.filter(matches), collection: collection, reveal: revealSong)
+        case .currentSong(let track):
+            MacSongsView(engine: engine, tracks: [track].filter(matches), collection: collection)
         case .favorites:
             MacSongsView(engine: engine, tracks: engine.library.favorites.filter(matches), collection: collection)
         case .albums:
@@ -255,7 +274,8 @@ struct MacRootView: View {
             MacArtistsView(engine: engine, artists: catalog.artists.filter { filter.isEmpty || $0.localizedCaseInsensitiveContains(filter) }, selected: $selectedArtist, tracks: catalog.tracks, collection: collection)
         case .playlist(let id):
             if let playlist = engine.library.playlists.first(where: { $0.id == id }) {
-                MacPlaylistView(engine: engine, playlist: playlist, collection: collection, filter: filter, deleted: { page = .songs })
+                MacPlaylistView(engine: engine, playlist: playlist, collection: collection, filter: filter,
+                                reveal: revealSong, deleted: { page = .songs })
             } else { MacEmptyView(engine: engine, text: engine.text("Playlist not found.", "No se encuentra la lista.", "Playlist não encontrada.")) }
         case .artist(let name):
             MacSongsView(engine: engine, tracks: catalog.tracks.filter { $0.artist == name && matches($0) }, collection: collection)
@@ -263,6 +283,71 @@ struct MacRootView: View {
             if let album = catalog.albums.first(where: { $0.id == id }) {
                 MacAlbumDetail(engine: engine, album: album, collection: collection)
             } else { MacEmptyView(engine: engine, text: engine.text("Album not found.", "No se encuentra el álbum.", "Álbum não encontrado.")) }
+        }
+    }
+
+    private func nowPlayingAction(_ action: MacNowPlayingAction) {
+        switch action {
+        case .song(let track):
+            showSong(track)
+        case .album(let track):
+            let albums = catalog.albums.filter { album in album.tracks.contains { $0.id == track.id } }
+            if let album = albums.first(where: { $0.title == track.album }) ?? albums.first {
+                filter = ""
+                page = .album(album.id)
+            }
+        case .playlist(let id, let track):
+            filter = ""
+            page = .playlist(id)
+            revealSong = MacSongReveal(trackID: track.id)
+        case .information(let track):
+            trackInformation = track
+        case .newPlaylist(let track):
+            playlistSeed = track
+            createShown = true
+        case .export(let track):
+            exportTrack = track
+            importShown = true
+        case .paste:
+            guard let track = MacTrackClipboard.readTrack() else {
+                engine.error = engine.text("Copy a song in Musike first.", "Copia primero una canción en Musike.", "Copie primeiro uma música no Musike.")
+                return
+            }
+            collection.add([track])
+            guard let savedTrack = collection.tracks.first(where: { $0.id == track.id }) else { return }
+            if case .playlist(let id) = page {
+                playlistAction("addToPlaylist", ["id": id, "track": engine.object(savedTrack)])
+            } else {
+                showSong(savedTrack)
+            }
+        }
+    }
+
+    private func showSong(_ track: Track) {
+        filter = ""
+        page = collection.contains(track.id) ? .songs : .currentSong(track)
+        revealSong = MacSongReveal(trackID: track.id)
+    }
+
+    private func playlistAction(_ action: String, _ args: [String: Any]) {
+        engine.call(action, args) { result in
+            if case .failure(let error) = result { engine.error = error.localizedDescription }
+        }
+    }
+
+    private func handleFileSelection(_ result: Result<[URL], Error>) {
+        let track = exportTrack
+        exportTrack = nil
+        switch result {
+        case .success(let urls):
+            guard let track else { collection.importFiles(urls); return }
+            guard let source = collection.localURL(track.id), let folder = urls.first else { return }
+            Task {
+                do { try await MacTrackFile.export(source, title: track.title, to: folder) }
+                catch { collection.error = error.localizedDescription }
+            }
+        case .failure(let error):
+            collection.error = error.localizedDescription
         }
     }
 }
@@ -349,9 +434,11 @@ private struct MacToolbarInstaller: UIViewRepresentable {
     @Binding var playerShown: Bool
     @Binding var installed: Bool
     let windowWidth: CGFloat
+    let onAction: (MacNowPlayingAction) -> Void
 
     func makeUIView(context: Context) -> MacToolbarAnchor {
-        MacToolbarAnchor(engine: engine, queueShown: $queueShown, playerShown: $playerShown, installed: $installed)
+        MacToolbarAnchor(engine: engine, queueShown: $queueShown, playerShown: $playerShown,
+                         installed: $installed, onAction: onAction)
     }
     func updateUIView(_ view: MacToolbarAnchor, context: Context) { view.updateWidth(windowWidth) }
 }
@@ -371,7 +458,8 @@ private enum MacPlaybackSection: String, CaseIterable {
         case .track:
             let available = windowWidth - macSidebarWidth
                 - Self.transport.width(for: windowWidth) - Self.output.width(for: windowWidth) - 72
-            return min(380, max(140, available))
+            let preferred = min(420, max(140, (windowWidth - macSidebarWidth) * 0.4))
+            return min(preferred, max(140, available))
         }
     }
 }
@@ -382,16 +470,19 @@ private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
     private let queueShown: Binding<Bool>
     private let playerShown: Binding<Bool>
     private let installed: Binding<Bool>
+    private let onAction: (MacNowPlayingAction) -> Void
     private var toolbar: NSToolbar?
     private var hosts: [MacPlaybackSection: UIHostingController<MacPlaybackBar>] = [:]
     private var widths: [MacPlaybackSection: NSLayoutConstraint] = [:]
     private var lastWidth: CGFloat = 760
 
-    init(engine: NativeEngine, queueShown: Binding<Bool>, playerShown: Binding<Bool>, installed: Binding<Bool>) {
+    init(engine: NativeEngine, queueShown: Binding<Bool>, playerShown: Binding<Bool>, installed: Binding<Bool>,
+         onAction: @escaping (MacNowPlayingAction) -> Void) {
         self.engine = engine
         self.queueShown = queueShown
         self.playerShown = playerShown
         self.installed = installed
+        self.onAction = onAction
         super.init(frame: .zero)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -422,7 +513,7 @@ private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
 
     private func controls(for section: MacPlaybackSection) -> MacPlaybackBar {
         MacPlaybackBar(engine: engine, queueShown: queueShown, playerShown: playerShown,
-                       compact: lastWidth < 840, section: section)
+                       compact: lastWidth < 840, section: section, onAction: onAction)
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -461,8 +552,7 @@ private struct MacPlaybackBar: View {
     @Binding var playerShown: Bool
     let compact: Bool
     var section: MacPlaybackSection?
-    @State private var seeking = false
-    @State private var seekValue: Double = 0
+    let onAction: (MacNowPlayingAction) -> Void
     @State private var volumePreview: Double?
     @State private var adjustingVolume = false
     @State private var volumeRevision = 0
@@ -477,7 +567,7 @@ private struct MacPlaybackBar: View {
                 HStack(spacing: compact ? 9 : 14) {
                     transport
                     Spacer(minLength: 4)
-                    nowPlaying.frame(maxWidth: 380)
+                    nowPlaying.frame(maxWidth: 420)
                     Spacer(minLength: 4)
                     output
                 }
@@ -535,37 +625,21 @@ private struct MacPlaybackBar: View {
             .disabled(engine.player.current == nil && action != "shuffle" && action != "repeat")
             .accessibilityLabel(action)
     }
-    private var nowPlaying: some View {
-        HStack(spacing: 8) {
-            if let track = engine.player.current {
-                Button { playerShown = true } label: { MacArtwork(track: track, size: 40) }.buttonStyle(.plain)
-                VStack(spacing: 0) {
-                    Button { playerShown = true } label: {
-                        VStack(spacing: 1) {
-                            Text(track.title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
-                            Text(track.artist).font(.system(size: 10)).foregroundColor(.secondary).lineLimit(1)
-                        }.frame(maxWidth: .infinity)
-                    }.buttonStyle(.plain)
-                    Slider(value: Binding(get: { seeking ? seekValue : min(engine.player.position, max(engine.player.duration, 1)) }, set: { seekValue = $0 }),
-                           in: 0...max(engine.player.duration, 1), onEditingChanged: { editing in
-                        seeking = editing; if !editing { engine.call("seek", ["position": seekValue]) }
-                    }).controlSize(.mini).frame(height: section == .track ? 20 : nil)
-                }
-                .fixedSize(horizontal: false, vertical: true)
-                Button { engine.track("favorite", track) } label: {
-                    Image(systemName: engine.library.favorites.contains(where: { $0.id == track.id }) ? "heart.fill" : "heart")
-                        .foregroundColor(engine.library.favorites.contains(where: { $0.id == track.id }) ? engine.accent : .secondary)
-                }.buttonStyle(.plain)
-            } else {
-                Image(systemName: "music.note").foregroundColor(.secondary).frame(width: 40, height: 40).background(Color.primary.opacity(0.1))
-                Spacer(); Text("Musike").font(.subheadline.weight(.semibold)).foregroundColor(.secondary); Spacer()
+    @ViewBuilder private var nowPlaying: some View {
+        if let track = engine.player.current {
+            MacMiniPlayer(engine: engine, track: track, openPlayer: { playerShown = true }, onAction: onAction)
+                .id(track.id)
+        } else {
+            ZStack(alignment: .leading) {
+                Text("Musike").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                Image(systemName: "music.note").foregroundStyle(.secondary)
+                    .frame(width: 42, height: 42).background(Color.primary.opacity(0.1))
+                    .accessibilityHidden(true)
             }
+            .background(Color.primary.opacity(0.09), in: RoundedRectangle(cornerRadius: 3))
+            .clipShape(RoundedRectangle(cornerRadius: 3))
         }
-        .padding(.trailing, 8)
-        .padding(.vertical, 2)
-        .frame(minHeight: 44)
-        .background(Color.primary.opacity(0.08).allowsHitTesting(false))
-        .cornerRadius(5)
     }
 }
 
@@ -578,9 +652,10 @@ private struct MacRoutePicker: UIViewRepresentable {
     func updateUIView(_ view: AVRoutePickerView, context: Context) {}
 }
 
-private struct MacArtwork: View {
+struct MacArtwork: View {
     let track: Track
     let size: CGFloat
+    var cornerRadius: CGFloat = 5
     var body: some View {
         Group {
             if let image = MacMusicLibrary.shared.artwork(track.id) {
@@ -588,7 +663,7 @@ private struct MacArtwork: View {
             } else if let url = URL(string: track.art.isEmpty ? track.thumb : track.art), !url.absoluteString.isEmpty {
                 AsyncImage(url: url) { image in image.resizable().scaledToFill() } placeholder: { placeholder }
             } else { placeholder }
-        }.frame(width: size, height: size).clipped().cornerRadius(5)
+        }.frame(width: size, height: size).clipped().cornerRadius(cornerRadius)
     }
     private var placeholder: some View { ZStack { Color.gray.opacity(0.45); Image(systemName: "music.note").font(.system(size: size * 0.38)).foregroundColor(.white.opacity(0.35)) } }
 }
@@ -648,6 +723,7 @@ private struct MacSongsView: View {
     let tracks: [Track]
     @ObservedObject var collection: MacMusicLibrary
     var playlistID: String? = nil
+    var reveal: MacSongReveal? = nil
     @State private var addToPlaylist: Track?
     var body: some View {
         if tracks.isEmpty { MacEmptyView(engine: engine, text: engine.text("No songs here yet. Import music or add songs from search.", "Todavía no hay canciones. Importa música o añádela desde Buscar.", "Ainda não há músicas. Importe músicas ou adicione pela busca.")) }
@@ -661,23 +737,32 @@ private struct MacSongsView: View {
                     Text(engine.text("Time", "Duración", "Duração")).frame(width: 60)
                     Spacer().frame(width: 32)
                 }.font(.system(size: 11)).foregroundColor(.secondary).padding(.vertical, 5).background(Color.primary.opacity(0.045))
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
-                            HStack(spacing: 0) {
-                                Text("\(index + 1)").foregroundColor(.secondary).frame(width: 36)
-                                Text(track.title).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
-                                Text(track.artist).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
-                                Text(track.album ?? "").foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
-                                Text(macTime(track.duration)).foregroundColor(.secondary).frame(width: 60)
-                                Menu { menu(track) } label: { Image(systemName: "ellipsis").frame(width: 32, height: 27) }.menuStyle(.borderlessButton)
+                ScrollViewReader { scroll in
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(tracks.enumerated()), id: \.offset) { index, track in
+                                HStack(spacing: 0) {
+                                    Text("\(index + 1)").foregroundColor(.secondary).frame(width: 36)
+                                    Text(track.title).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
+                                    Text(track.artist).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
+                                    Text(track.album ?? "").foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
+                                    Text(macTime(track.duration)).foregroundColor(.secondary).frame(width: 60)
+                                    Menu { menu(track) } label: { Image(systemName: "ellipsis").frame(width: 32, height: 27) }.menuStyle(.borderlessButton)
+                                }
+                                .font(.system(size: 12)).padding(.vertical, 3)
+                                .background(engine.player.current?.id == track.id || reveal?.trackID == track.id ? engine.accent.opacity(0.18) : (index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.04)))
+                                .contentShape(Rectangle())
+                                .onTapGesture(count: 2) { engine.play(tracks, at: index) }
+                                .contextMenu { menu(track) }
+                                .id(index)
                             }
-                            .font(.system(size: 12)).padding(.vertical, 3)
-                            .background(engine.player.current?.id == track.id ? engine.accent.opacity(0.18) : (index.isMultiple(of: 2) ? Color.clear : Color.primary.opacity(0.04)))
-                            .contentShape(Rectangle())
-                            .onTapGesture(count: 2) { engine.play(tracks, at: index) }
-                            .contextMenu { menu(track) }
                         }
+                    }
+                    .task(id: reveal) {
+                        guard let reveal, let index = tracks.firstIndex(where: { $0.id == reveal.trackID }) else { return }
+                        await Task.yield()
+                        guard !Task.isCancelled else { return }
+                        scroll.scrollTo(index, anchor: .center)
                     }
                 }
             }
@@ -761,6 +846,7 @@ private struct MacPlaylistView: View {
     let playlist: Playlist
     @ObservedObject var collection: MacMusicLibrary
     let filter: String
+    let reveal: MacSongReveal?
     let deleted: () -> Void
     @State private var rename = false
     @State private var deleting = false
@@ -777,7 +863,7 @@ private struct MacPlaylistView: View {
                     Button(engine.text("Delete", "Eliminar", "Excluir"), role: .destructive) { deleting = true }
                 } label: { Image(systemName: "ellipsis.circle") }
             }.padding(16)
-            MacSongsView(engine: engine, tracks: tracks, collection: collection, playlistID: playlist.id)
+            MacSongsView(engine: engine, tracks: tracks, collection: collection, playlistID: playlist.id, reveal: reveal)
         }
         .sheet(isPresented: $rename) {
             PlaylistNameSheet(engine: engine, name: $name, title: engine.text("Rename playlist", "Renombrar lista", "Renomear playlist"), action: engine.text("Save", "Guardar", "Salvar")) { value in engine.call("renamePlaylist", ["id": playlist.id, "name": value]) }
@@ -827,7 +913,7 @@ private struct MacQueuePanel: View {
         }.padding(.vertical, 6).contentShape(Rectangle())
     }
 }
-private func macTime(_ value: Double) -> String {
+func macTime(_ value: Double) -> String {
     guard value.isFinite && value >= 0 else { return "0:00" }
     let seconds = Int(value); return String(format: "%d:%02d", seconds / 60, seconds % 60)
 }

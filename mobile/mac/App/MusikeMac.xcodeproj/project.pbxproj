@@ -10,6 +10,7 @@
 		CC0000000000000000000015 /* MacInstanceLock.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000016 /* MacInstanceLock.swift */; };
 		CC0000000000000000000013 /* MacLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000014 /* MacLibrary.swift */; };
 		CC0000000000000000000011 /* MacLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000012 /* MacLayout.swift */; };
+		CC0000000000000000000041 /* MacMiniPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC0000000000000000000042 /* MacMiniPlayer.swift */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
@@ -27,6 +28,7 @@
 		CC0000000000000000000016 /* MacInstanceLock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../../mac/App/Mac/MacInstanceLock.swift; sourceTree = "<group>"; };
 		CC0000000000000000000014 /* MacLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../../mac/App/Mac/MacLibrary.swift; sourceTree = "<group>"; };
 		CC0000000000000000000012 /* MacLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../../mac/App/Mac/MacLayout.swift; sourceTree = "<group>"; };
+		CC0000000000000000000042 /* MacMiniPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../../mac/App/Mac/MacMiniPlayer.swift; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -83,6 +85,7 @@
 				AA0000000000000000000007 /* MusikeAudio.swift */,
 				AA0000000000000000000011 /* MusikeNativeUI.swift */,
 				CC0000000000000000000012 /* MacLayout.swift */,
+				CC0000000000000000000042 /* MacMiniPlayer.swift */,
 				CC0000000000000000000014 /* MacLibrary.swift */,
 				CC0000000000000000000016 /* MacInstanceLock.swift */,
 				BB0000000000000000000002 /* BatchSearchModel.swift */,
@@ -198,6 +201,7 @@
 				AA0000000000000000000008 /* MusikeAudio.swift in Sources */,
 				AA0000000000000000000010 /* MusikeNativeUI.swift in Sources */,
 				CC0000000000000000000011 /* MacLayout.swift in Sources */,
+				CC0000000000000000000041 /* MacMiniPlayer.swift in Sources */,
 				CC0000000000000000000013 /* MacLibrary.swift in Sources */,
 				CC0000000000000000000015 /* MacInstanceLock.swift in Sources */,
 				BB0000000000000000000001 /* BatchSearchModel.swift in Sources */,

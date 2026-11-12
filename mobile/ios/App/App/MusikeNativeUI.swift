@@ -126,6 +126,7 @@ struct PlayerState: Decodable {
     var shuffle: Bool = false
     var `repeat`: String = "off"
     var autoRadio: Bool = false
+    var currentDisliked: Bool? = nil
     var volume: Double = 0.9
     var muted: Bool = false
     var errorText: String? = nil
