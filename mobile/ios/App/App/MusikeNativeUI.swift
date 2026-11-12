@@ -1516,6 +1516,12 @@ final class MusikeRootController: UIViewController {
         PlaybackDiagnostics.shared.sessionStarted()
         addChild(runtime); runtime.view.frame = view.bounds; runtime.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(runtime.view); runtime.didMove(toParent: self)
         host = UIHostingController(rootView: MusikePlatformRoot(engine: runtime.nativeEngine))
+        #if targetEnvironment(macCatalyst)
+        // Keep the native sidebar material visible behind the hosting hierarchy.
+        view.backgroundColor = .clear
+        runtime.view.backgroundColor = .clear
+        host.view.backgroundColor = .clear
+        #endif
         addChild(host); host.view.frame = view.bounds; host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(host.view); host.didMove(toParent: self)
         #if !targetEnvironment(macCatalyst)
         appearanceObserver = runtime.nativeEngine.$appearance.map(\.theme).removeDuplicates().sink { [weak self] theme in

@@ -81,29 +81,27 @@ struct MacRootView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            HStack(spacing: 0) {
-                sidebar.frame(width: geometry.size.width < 820 ? 185 : 218)
-                Rectangle().fill(Color.primary.opacity(0.14)).frame(width: 1)
-                VStack(spacing: 0) {
-                    if !nativeToolbarInstalled {
-                        MacPlaybackBar(engine: engine, queueShown: $queueShown, playerShown: $playerShown,
-                                       compact: geometry.size.width < 840)
-                        Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
-                    }
+            Group {
+                if nativeToolbarInstalled {
+                    MacLibrarySplitView(
+                        sidebar: sidebar,
+                        detail: libraryContent(windowWidth: geometry.size.width)
+                    )
+                } else {
                     HStack(spacing: 0) {
+                        sidebar.frame(width: macSidebarWidth)
+                            .background(.ultraThinMaterial)
+                        Rectangle().fill(Color.primary.opacity(0.14)).frame(width: 1)
                         VStack(spacing: 0) {
-                            pageHeader
-                            pageContent.frame(maxWidth: .infinity, maxHeight: .infinity)
-                        }
-                        if queueShown {
-                            Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1)
-                            MacQueuePanel(engine: engine, showHistory: $queueHistory)
-                                .frame(width: min(300, max(230, geometry.size.width * 0.25)))
+                            MacPlaybackBar(engine: engine, queueShown: $queueShown, playerShown: $playerShown,
+                                           compact: geometry.size.width < 840)
+                            Rectangle().fill(Color.primary.opacity(0.12)).frame(height: 1)
+                            libraryContent(windowWidth: geometry.size.width)
                         }
                     }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(uiColor: .systemBackground))
+                }
             }
-            .background(Color(uiColor: .systemBackground))
             .overlay(alignment: .topLeading) {
                 if #available(iOS 16.4, *) {
                     MacToolbarInstaller(engine: engine, queueShown: $queueShown, playerShown: $playerShown,
@@ -112,7 +110,7 @@ struct MacRootView: View {
                 }
             }
         }
-        .ignoresSafeArea(.container, edges: nativeToolbarInstalled ? [] : .top)
+        .ignoresSafeArea(.container, edges: .top)
         .tint(engine.accent)
         .onReceive(collection.$tracks) { catalog = MacCatalog($0, albumInfo: collection.albumInfo) }
         .onReceive(engine.$library) { collection.migrateLegacy($0) }
@@ -129,6 +127,22 @@ struct MacRootView: View {
         .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { engine.error != nil || collection.error != nil }, set: { if !$0 { engine.error = nil; collection.error = nil } })) {
             Button("OK", role: .cancel) { engine.error = nil; collection.error = nil }
         } message: { Text(collection.error ?? engine.error ?? "") }
+    }
+
+    private func libraryContent(windowWidth: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            VStack(spacing: 0) {
+                pageHeader
+                pageContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            if queueShown {
+                Rectangle().fill(Color.primary.opacity(0.12)).frame(width: 1)
+                MacQueuePanel(engine: engine, showHistory: $queueHistory)
+                    .frame(width: min(300, max(230, windowWidth * 0.25)))
+            }
+        }
+        .background(Color(uiColor: .systemBackground))
+        .tint(engine.accent)
     }
 
     private var sidebar: some View {
@@ -170,7 +184,7 @@ struct MacRootView: View {
             }.buttonStyle(.plain).padding(.bottom, 8)
         }
         .font(.system(size: 13))
-        .background(.ultraThinMaterial)
+        .tint(engine.accent)
     }
     private func sidebarHeading(_ title: String) -> some View {
         Text(title).font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
@@ -250,8 +264,56 @@ struct MacRootView: View {
     }
 }
 
-/// The toolbar owns the existing SwiftUI player controls, including their bindings
-/// to the queue and player sheets. macOS keeps the window buttons aligned with it.
+private let macSidebarWidth: CGFloat = 200
+
+private struct MacLibrarySplitView<Sidebar: View, Detail: View>: UIViewControllerRepresentable {
+    var sidebar: Sidebar
+    var detail: Detail
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(sidebar: sidebar, detail: detail)
+    }
+
+    func makeUIViewController(context: Context) -> UISplitViewController {
+        let split = UISplitViewController(style: .doubleColumn)
+        split.primaryBackgroundStyle = .sidebar
+        split.preferredSplitBehavior = .tile
+        split.preferredDisplayMode = .oneBesideSecondary
+        split.minimumPrimaryColumnWidth = macSidebarWidth
+        split.maximumPrimaryColumnWidth = macSidebarWidth
+        split.preferredPrimaryColumnWidth = macSidebarWidth
+        split.presentsWithGesture = false
+        split.displayModeButtonVisibility = .never
+        split.view.backgroundColor = .clear
+        split.setViewController(navigationController(for: context.coordinator.sidebar), for: .primary)
+        split.setViewController(navigationController(for: context.coordinator.detail), for: .secondary)
+        return split
+    }
+
+    func updateUIViewController(_ split: UISplitViewController, context: Context) {
+        context.coordinator.sidebar.rootView = sidebar
+        context.coordinator.detail.rootView = detail
+    }
+
+    private func navigationController(for host: UIViewController) -> UINavigationController {
+        host.view.backgroundColor = .clear
+        let navigation = UINavigationController(rootViewController: host)
+        navigation.setNavigationBarHidden(true, animated: false)
+        navigation.view.backgroundColor = .clear
+        return navigation
+    }
+
+    final class Coordinator {
+        let sidebar: UIHostingController<Sidebar>
+        let detail: UIHostingController<Detail>
+
+        init(sidebar: Sidebar, detail: Detail) {
+            self.sidebar = UIHostingController(rootView: sidebar)
+            self.detail = UIHostingController(rootView: detail)
+        }
+    }
+}
+
 @available(iOS 16.4, *)
 private struct MacToolbarInstaller: UIViewRepresentable {
     @ObservedObject var engine: NativeEngine
@@ -266,43 +328,49 @@ private struct MacToolbarInstaller: UIViewRepresentable {
     func updateUIView(_ view: MacToolbarAnchor, context: Context) { view.updateWidth(windowWidth) }
 }
 
-@available(iOS 16.4, *)
-private struct MacToolbarContent: View {
-    @ObservedObject var engine: NativeEngine
-    @Binding var queueShown: Bool
-    @Binding var playerShown: Bool
-    let windowWidth: CGFloat
-    var body: some View {
-        HStack(spacing: 0) {
-            Color.clear.frame(width: windowWidth < 820 ? 100 : 133).allowsHitTesting(false)
-            MacPlaybackBar(engine: engine, queueShown: $queueShown, playerShown: $playerShown, compact: windowWidth < 840, inTitlebar: true)
+private enum MacPlaybackSection: String, CaseIterable {
+    case transport, track, output
+
+    var identifier: NSToolbarItem.Identifier {
+        NSToolbarItem.Identifier("app.musike.playback." + rawValue)
+    }
+
+    func width(for windowWidth: CGFloat) -> CGFloat {
+        let compact = windowWidth < 840
+        switch self {
+        case .transport: return compact ? 126 : 155
+        case .output: return compact ? 174 : 200
+        case .track:
+            let available = windowWidth - macSidebarWidth
+                - Self.transport.width(for: windowWidth) - Self.output.width(for: windowWidth) - 72
+            return min(380, max(140, available))
         }
-        .frame(height: 50)
-        .background(MacWindowDragArea())
     }
 }
 
 @available(iOS 16.4, *)
 private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
-    private static let itemID = NSToolbarItem.Identifier("app.musike.playback")
     private let engine: NativeEngine
     private let queueShown: Binding<Bool>
     private let playerShown: Binding<Bool>
     private let installed: Binding<Bool>
     private var toolbar: NSToolbar?
-    private var host: UIHostingController<MacToolbarContent>?
-    private var widthConstraint: NSLayoutConstraint?
-    private var lastWidth: CGFloat = 0
+    private var hosts: [MacPlaybackSection: UIHostingController<MacPlaybackBar>] = [:]
+    private var widths: [MacPlaybackSection: NSLayoutConstraint] = [:]
+    private var lastWidth: CGFloat = 760
 
     init(engine: NativeEngine, queueShown: Binding<Bool>, playerShown: Binding<Bool>, installed: Binding<Bool>) {
-        self.engine = engine; self.queueShown = queueShown; self.playerShown = playerShown; self.installed = installed
+        self.engine = engine
+        self.queueShown = queueShown
+        self.playerShown = playerShown
+        self.installed = installed
         super.init(frame: .zero)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        guard toolbar == nil, let scene = window?.windowScene, let titlebar = scene.titlebar else { return }
+        guard toolbar == nil, let titlebar = window?.windowScene?.titlebar else { return }
         let toolbar = NSToolbar(identifier: "app.musike.main")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
@@ -315,44 +383,48 @@ private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
 
     func updateWidth(_ width: CGFloat) {
         guard width > 0, abs(width - lastWidth) > 1 else { return }
+        let compactChanged = (lastWidth < 840) != (width < 840)
         lastWidth = width
-        let toolbarWidth = max(450, width - 125)
-        widthConstraint?.constant = toolbarWidth
-        host?.rootView = MacToolbarContent(engine: engine, queueShown: queueShown, playerShown: playerShown,
-                                           windowWidth: width)
-        host?.view.invalidateIntrinsicContentSize()
+        for (section, host) in hosts {
+            widths[section]?.constant = section.width(for: width)
+            if compactChanged { host.rootView = controls(for: section) }
+            host.view.invalidateIntrinsicContentSize()
+        }
     }
 
-    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [Self.itemID] }
-    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { [Self.itemID] }
-    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+    private func controls(for section: MacPlaybackSection) -> MacPlaybackBar {
+        MacPlaybackBar(engine: engine, queueShown: queueShown, playerShown: playerShown,
+                       compact: lastWidth < 840, section: section)
+    }
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        // Leave actual AppKit toolbar space between the three interactive groups.
+        [.primarySidebarTrackingSeparatorItemIdentifier, MacPlaybackSection.transport.identifier,
+         .flexibleSpace, MacPlaybackSection.track.identifier, .flexibleSpace, MacPlaybackSection.output.identifier]
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
-        guard itemIdentifier == Self.itemID else { return nil }
-        let host = UIHostingController(rootView: MacToolbarContent(engine: engine, queueShown: queueShown,
-            playerShown: playerShown, windowWidth: lastWidth))
-        // A toolbar item lives in the title bar's safe area. Its controls must
-        // use the item's own bounds rather than inherit the window's top inset.
+        guard let section = MacPlaybackSection.allCases.first(where: { $0.identifier == identifier }) else {
+            return nil
+        }
+        let host = UIHostingController(rootView: controls(for: section))
+        // The hosting view is already inside the title bar.
         host.safeAreaRegions = []
         host.view.backgroundColor = .clear
         host.view.translatesAutoresizingMaskIntoConstraints = false
-        let width = host.view.widthAnchor.constraint(equalToConstant: max(450, lastWidth - 125))
+        let width = host.view.widthAnchor.constraint(equalToConstant: section.width(for: lastWidth))
         NSLayoutConstraint.activate([width, host.view.heightAnchor.constraint(equalToConstant: 50)])
-        widthConstraint = width
-        self.host = host
-        return NSUIViewToolbarItem(itemIdentifier: itemIdentifier, uiView: host.view)
-    }
-}
-
-private struct MacWindowDragArea: UIViewRepresentable {
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        if #available(iOS 17.0, *) {
-            view.addInteraction(UIWindowSceneDragInteraction())
+        if flag {
+            widths[section] = width
+            hosts[section] = host
         }
-        return view
+        return NSUIViewToolbarItem(itemIdentifier: identifier, uiView: host.view)
     }
-
-    func updateUIView(_ view: UIView, context: Context) {}
 }
 
 private struct MacPlaybackBar: View {
@@ -360,7 +432,7 @@ private struct MacPlaybackBar: View {
     @Binding var queueShown: Bool
     @Binding var playerShown: Bool
     let compact: Bool
-    var inTitlebar = false
+    var section: MacPlaybackSection?
     @State private var seeking = false
     @State private var seekValue: Double = 0
     @State private var volumePreview: Double?
@@ -368,17 +440,40 @@ private struct MacPlaybackBar: View {
     @State private var volumeRevision = 0
     private var volume: Double { engine.player.muted ? 0 : engine.player.volume }
     var body: some View {
-        HStack(spacing: compact ? 9 : 14) {
-            HStack(spacing: compact ? 10 : 14) {
-                control("shuffle", "shuffle", active: engine.player.shuffle)
-                control("backward.end.fill", "previous")
-                control(engine.player.status == "playing" ? "pause.fill" : "play.fill", "toggle", size: 18)
-                control("forward.end.fill", "next")
-                control(engine.player.repeat == "one" ? "repeat.1" : "repeat", "repeat", active: engine.player.repeat != "off")
-            }.frame(minWidth: compact ? 130 : 160)
-            Spacer(minLength: 4)
-            nowPlaying.frame(maxWidth: 380)
-            Spacer(minLength: 4)
+        Group {
+            switch section {
+            case .transport: transport
+            case .track: nowPlaying
+            case .output: output
+            case nil:
+                HStack(spacing: compact ? 9 : 14) {
+                    transport
+                    Spacer(minLength: 4)
+                    nowPlaying.frame(maxWidth: 380)
+                    Spacer(minLength: 4)
+                    output
+                }
+                .padding(.horizontal, compact ? 12 : 18)
+                .padding(.vertical, 6)
+                .frame(minHeight: 58)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .tint(engine.accent)
+    }
+
+    private var transport: some View {
+        HStack(spacing: compact ? 10 : 14) {
+            control("shuffle", "shuffle", active: engine.player.shuffle)
+            control("backward.end.fill", "previous")
+            control(engine.player.status == "playing" ? "pause.fill" : "play.fill", "toggle", size: 18)
+            control("forward.end.fill", "next")
+            control(engine.player.repeat == "one" ? "repeat.1" : "repeat", "repeat", active: engine.player.repeat != "off")
+        }
+    }
+
+    private var output: some View {
+        HStack(spacing: compact ? 9 : 12) {
             HStack(spacing: 7) {
                 Button { volumeRevision += 1; volumePreview = nil; engine.call("mute") } label: { Image(systemName: engine.player.muted ? "speaker.slash.fill" : "speaker.fill") }.buttonStyle(.plain)
                 Slider(value: Binding(get: { volumePreview ?? volume }, set: { value in
@@ -404,11 +499,8 @@ private struct MacPlaybackBar: View {
                 .buttonStyle(.plain).foregroundColor(queueShown ? engine.accent : .secondary)
                 .accessibilityLabel(engine.text("Queue", "Cola", "Fila"))
         }
-        .padding(.horizontal, compact ? 12 : 18)
-        .padding(.vertical, inTitlebar ? 0 : 6)
-        .frame(minHeight: inTitlebar ? 50 : 58)
-        .background(Color.primary.opacity(0.045).allowsHitTesting(false))
     }
+
     private func control(_ symbol: String, _ action: String, active: Bool = false, size: CGFloat = 13) -> some View {
         Button { engine.call(action) } label: { Image(systemName: symbol).font(.system(size: size, weight: .semibold)) }
             .buttonStyle(.plain).foregroundColor(active ? engine.accent : .primary)
@@ -429,7 +521,7 @@ private struct MacPlaybackBar: View {
                     Slider(value: Binding(get: { seeking ? seekValue : min(engine.player.position, max(engine.player.duration, 1)) }, set: { seekValue = $0 }),
                            in: 0...max(engine.player.duration, 1), onEditingChanged: { editing in
                         seeking = editing; if !editing { engine.call("seek", ["position": seekValue]) }
-                    }).controlSize(.mini).frame(height: inTitlebar ? 20 : nil)
+                    }).controlSize(.mini).frame(height: section == .track ? 20 : nil)
                 }
                 .fixedSize(horizontal: false, vertical: true)
                 Button { engine.track("favorite", track) } label: {
