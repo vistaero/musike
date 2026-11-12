@@ -198,6 +198,13 @@ final class NativeEngine: NSObject, ObservableObject, WKScriptMessageHandler {
     func object<T: Encodable>(_ value: T) -> Any { (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(value))) ?? [:] }
     func play(_ tracks: [Track], at index: Int = 0) { guard !tracks.isEmpty else { return }; call("playList", ["tracks": object(tracks), "index": index]) }
     func track(_ action: String, _ track: Track, extra: [String: Any] = [:]) { var args = extra; args["track"] = object(track); call(action, args) }
+    var preferredColorScheme: ColorScheme? {
+        #if targetEnvironment(macCatalyst)
+        return nil
+        #else
+        return appearance.theme == "light" ? .light : .dark
+        #endif
+    }
     func text(_ en: String, _ es: String, _ pt: String) -> String { language.hasPrefix("es") ? es : language.hasPrefix("pt") ? pt : en }
     var accent: Color { Color(hex: appearance.accent) }
 }
@@ -245,7 +252,7 @@ struct NativeRoot: View {
         } else {
             tabs.modifier(RootPresentation(engine: engine, playerOpen: $playerOpen))
         }
-        }.preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark).tint(engine.accent)
+        }.preferredColorScheme(engine.preferredColorScheme).tint(engine.accent)
     }
     var tabs: some View {
         TabView(selection: $tab) {
@@ -370,10 +377,12 @@ struct SettingsScreen: View {
         NavigationView {
             Form {
                 Section(header: Text(engine.text("Appearance", "Apariencia", "Aparência"))) {
+                    #if !targetEnvironment(macCatalyst)
                     Picker(engine.text("Theme", "Tema", "Tema"), selection: Binding(get: { engine.appearance.theme }, set: { engine.call("theme", ["value": $0]) })) {
                         Text(engine.text("Dark", "Oscuro", "Escuro")).tag("dark")
                         Text(engine.text("Light", "Claro", "Claro")).tag("light")
                     }.pickerStyle(.segmented)
+                    #endif
                     VStack(alignment: .leading, spacing: 12) {
                         Text(engine.text("Accent color", "Color de acento", "Cor de destaque"))
                         LazyVGrid(columns: [GridItem(.adaptive(minimum: 36), spacing: 10)], alignment: .leading, spacing: 12) {
@@ -393,11 +402,13 @@ struct SettingsScreen: View {
                             }
                     }.padding(.vertical, 4)
                 }
+                #if !targetEnvironment(macCatalyst)
                 Section(header: Text(engine.text("Language", "Idioma", "Idioma"))) {
                     Picker(engine.text("Language", "Idioma", "Idioma"), selection: Binding(get: { engine.language }, set: { engine.call("language", ["value": $0]) })) {
                         Text("English").tag("en"); Text("Español").tag("es-ES"); Text("Português (Brasil)").tag("pt-BR")
                     }
                 }
+                #endif
                 Section(header: Text(engine.text("Home", "Inicio", "Início"))) {
                     Toggle(engine.text("Shortcuts", "Accesos directos", "Atalhos"), isOn: setting("homeShortcuts", engine.appearance.homeShortcuts))
                     Toggle(engine.text("Recently played", "Escuchado recientemente", "Ouvidas recentemente"), isOn: setting("homeRecent", engine.appearance.homeRecent))
@@ -483,7 +494,7 @@ struct SettingsScreen: View {
             } message: { Text(engine.text("Your current library will be replaced by the backup.", "La biblioteca actual será sustituida por la copia.", "Sua biblioteca atual será substituída pelo backup.")) }
             .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { engine.error != nil }, set: { if !$0 { engine.error = nil } })) { Button("OK", role: .cancel) { engine.error = nil } } message: { Text(engine.error ?? "") }
             .alert(engine.text("Backup", "Copia de seguridad", "Backup"), isPresented: Binding(get: { notice != nil }, set: { if !$0 { notice = nil } })) { Button("OK", role: .cancel) { notice = nil } } message: { Text(notice ?? "") }
-        }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark)
+        }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.preferredColorScheme)
     }
     private func loadSystem() {
         guard !systemBusy else { return }
@@ -979,7 +990,7 @@ struct BatchPlaylistPicker: View {
                 .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
                     Button("OK", role: .cancel) { error = nil }
                 } message: { Text(error ?? "") }
-        }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark)
+        }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.preferredColorScheme)
     }
     private func perform(_ action: String, _ args: [String: Any]) {
         busy = true
@@ -1426,7 +1437,7 @@ struct PlayerScreen: View {
         .alert(engine.text("Error", "Error", "Erro"), isPresented: Binding(get: { engine.error != nil }, set: { if !$0 { engine.error = nil } })) {
             Button("OK", role: .cancel) { engine.error = nil }
         } message: { Text(engine.error ?? "") }
-        }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.appearance.theme == "light" ? .light : .dark)
+        }.navigationViewStyle(.stack).tint(engine.accent).preferredColorScheme(engine.preferredColorScheme)
     }
     private func updateLoadingNotice(_ status: String) {
         loadingRevision += 1
@@ -1497,15 +1508,19 @@ typealias MusikePlatformRoot = NativeRoot
 final class MusikeRootController: UIViewController {
     private let runtime = MusikeWebViewController()
     private var host: UIHostingController<MusikePlatformRoot>!
+    #if !targetEnvironment(macCatalyst)
     private var appearanceObserver: AnyCancellable?
+    #endif
     override func viewDidLoad() {
         super.viewDidLoad()
         PlaybackDiagnostics.shared.sessionStarted()
         addChild(runtime); runtime.view.frame = view.bounds; runtime.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(runtime.view); runtime.didMove(toParent: self)
         host = UIHostingController(rootView: MusikePlatformRoot(engine: runtime.nativeEngine))
         addChild(host); host.view.frame = view.bounds; host.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]; view.addSubview(host.view); host.didMove(toParent: self)
+        #if !targetEnvironment(macCatalyst)
         appearanceObserver = runtime.nativeEngine.$appearance.map(\.theme).removeDuplicates().sink { [weak self] theme in
             self?.host.overrideUserInterfaceStyle = theme == "light" ? .light : .dark
         }
+        #endif
     }
 }

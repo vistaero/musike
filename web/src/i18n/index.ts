@@ -19,8 +19,11 @@ const KEY = "musike:lang";
 
 export const isLang = (v: unknown): v is Lang => v === "en" || v === "pt-BR" || v === "es-ES";
 
-/** Musike speaks English until the user picks another language in Settings. */
+// The native Mac host supplies its localization before the engine starts.
+const systemLanguage = (window as Window & { __musikeSystemLanguage?: unknown }).__musikeSystemLanguage;
+
 function readLang(): Lang {
+  if (isLang(systemLanguage)) return systemLanguage;
   try {
     const saved = localStorage.getItem(KEY);
     if (isLang(saved)) return saved;
@@ -49,6 +52,7 @@ export const useI18n = create<I18nState>((set) => ({
   lang: initial,
   t: MESSAGES[initial],
   setLang: (lang) => {
+    if (isLang(systemLanguage)) return;
     apply(lang);
     try {
       localStorage.setItem(KEY, lang);

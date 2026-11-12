@@ -10,7 +10,13 @@ final class MusikeWebViewController: UIViewController {
     private let transport = MacTransport()
     private let localFiles = MacLocalFiles()
     private let assets = MacAssets()
-    let nativeEngine = NativeEngine()
+    let nativeEngine: NativeEngine = {
+        let engine = NativeEngine()
+        let localization = Bundle.main.preferredLocalizations.first ?? "en"
+        if localization.hasPrefix("es") { engine.language = "es-ES" }
+        if localization.hasPrefix("pt") { engine.language = "pt-BR" }
+        return engine
+    }()
     private var engineView: WKWebView!
 
     override func viewDidLoad() {
@@ -26,6 +32,9 @@ final class MusikeWebViewController: UIViewController {
         controller.add(transport, name: "musikeHTTP")
         controller.add(localFiles, name: "musikeLocal")
         controller.addUserScript(WKUserScript(source: MacTransport.script, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        let language = WKUserScript(source: "window.__musikeSystemLanguage = '\(nativeEngine.language)'",
+                                    injectionTime: .atDocumentStart, forMainFrameOnly: true)
+        controller.addUserScript(language)
         engineView = WKWebView(frame: view.bounds, configuration: config)
         engineView.isHidden = true
         view.addSubview(engineView)

@@ -2,9 +2,10 @@
 
 This target uses Mac Catalyst and the SwiftUI interface shared with iOS. The
 catalog, player and library run on the Mac; it does not require a Musike server.
-The interface uses the Mac idiom at native scale. The playback bar is laid out
-with the rest of the SwiftUI window so it follows the app theme and stays above
-the library header, alongside the macOS window buttons.
+The interface uses the Mac idiom at native scale and follows macOS appearance
+and language preferences. On macOS 13.3 and later, the playback controls use the
+unified title bar. The toolbar background supports window dragging on macOS 14
+and later.
 The Mac library is independent of iOS and of the existing Electron app. Saved
 online songs and album membership, playlists, and favorites are included in
 the JSON backup in Settings. Music imported from local files is copied into
