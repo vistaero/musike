@@ -6,7 +6,7 @@ export const es: Messages = {
   locale: "es-ES",
   common: {
     close: "Cerrar", back: "Volver", cancel: "Cancelar", retry: "Reintentar", loading: "Cargando",
-    play: "Reproducir", pause: "Pausar", playX: (title) => `Reproducir ${title}`, playAll: "Reproducir todo",
+    play: "Reproducir", pause: "Pausar", stopLoading: "Cancelar la carga", playX: (title) => `Reproducir ${title}`, playAll: "Reproducir todo",
     favorite: "Añadir a favoritos", playlist: "Lista de reproducción", addToFavorites: "Añadir a favoritos",
     removeFromFavorites: "Quitar de favoritos", inFavorites: "En favoritos", video: "Vídeo", youtube: "YouTube",
     searchMusic: "Buscar música", install: "Instalar", update: "Actualizar",
