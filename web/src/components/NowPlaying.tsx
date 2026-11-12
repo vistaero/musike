@@ -17,6 +17,7 @@ import { useUi, type PanelTab } from "../stores/ui";
 import { Artwork } from "./Artwork";
 import { FavoriteButton, ModeSwitch, Scrubber, Transport } from "./Controls";
 import { IconButton } from "./IconButton";
+import { LyricsButton, LyricsView, useLyricsNavigation } from "./Lyrics";
 import { QueueList } from "./Queue";
 import { SLOT, VideoSlot } from "./Video";
 
@@ -36,7 +37,7 @@ function Stage({ track, slot, className }: { track: Track; slot: number; classNa
         <VideoSlot
           priority={slot}
           expandable
-          className={cn("rounded-[16px]", portrait ? "h-[min(52dvh,560px)]" : "w-full")}
+          className={cn("rounded-[1rem]", portrait ? "h-[min(52dvh,560px)]" : "w-full")}
           style={{ aspectRatio: Math.min(16 / 9, Math.max(9 / 16, aspect)) }}
         />
       </div>
@@ -55,10 +56,10 @@ function Stage({ track, slot, className }: { track: Track; slot: number; classNa
         fallback={track.thumb}
         alt={t.nowPlaying.coverOf(track.title)}
         iconSize={48}
-        className="relative size-full rounded-[18px] shadow-[0_24px_60px_rgb(0_0_0/0.45)]"
+        className="relative size-full rounded-[1.125rem] shadow-[0_24px_60px_rgb(0_0_0/0.45)]"
       />
       {note && (
-        <span className="absolute inset-x-3 bottom-3 flex items-center justify-center gap-2 rounded-full bg-black/65 px-3 py-2 text-center text-[13px] font-medium text-white backdrop-blur-md">
+        <span className="absolute inset-x-3 bottom-3 flex items-center justify-center gap-2 rounded-full bg-black/65 px-3 py-2 text-center text-[0.8125rem] font-medium text-white backdrop-blur-md">
           {note === "findingClip" ? (
             <MagnifyingGlassIcon size={16} className="shrink-0" />
           ) : (
@@ -77,7 +78,7 @@ function TrackHeading({ track, large = false }: { track: Track; large?: boolean 
   return (
     <div className="flex items-center gap-3">
       <div className="min-w-0 flex-1">
-        <h2 className={cn("truncate font-semibold tracking-tight", large ? "text-[22px] leading-tight" : "text-lg")}>{track.title}</h2>
+        <h2 className={cn("truncate font-semibold tracking-tight", large ? "text-[1.375rem] leading-tight" : "text-lg")}>{track.title}</h2>
         <p className={cn("truncate", large ? "text-base" : "text-sm", status === "error" ? "text-danger" : "text-fg-2")}>
           {statusText ?? [track.artist, track.album].filter(Boolean).join(" · ")}
         </p>
@@ -85,6 +86,14 @@ function TrackHeading({ track, large = false }: { track: Track; large?: boolean 
       <FavoriteButton track={track} size={large ? "lg" : "md"} />
     </div>
   );
+}
+
+function usePanelTab(): { tab: PanelTab; showLyrics: boolean } {
+  const tab = useUi((s) => s.panelTab);
+  const { atLyrics } = useLyricsNavigation();
+  if (!atLyrics) return { tab, showLyrics: true };
+  // The lyrics already fill the middle column: repeating them here would just be a smaller copy.
+  return { tab: tab === "lyrics" ? "playing" : tab, showLyrics: false };
 }
 
 function PanelBody({ tab, slot }: { tab: PanelTab; slot: number }) {
@@ -95,6 +104,7 @@ function PanelBody({ tab, slot }: { tab: PanelTab; slot: number }) {
   const t = useT();
 
   if (tab === "queue") return <QueueList />;
+  if (tab === "lyrics") return <LyricsView className="h-full" />;
   if (!track) {
     return <p className="px-2 py-16 text-center text-sm text-fg-2">{t.nowPlaying.playSomething}</p>;
   }
@@ -112,10 +122,10 @@ function PanelBody({ tab, slot }: { tab: PanelTab; slot: number }) {
         <RadioIcon size={18} /> {t.nowPlaying.startRadio}
       </button>
       {nextUp && (
-        <div className="rounded-[14px] bg-surface-1 p-3 ring-1 ring-line">
+        <div className="rounded-[0.875rem] bg-surface-1 p-3 ring-1 ring-line">
           <p className="pb-2 text-xs font-medium text-fg-3">{t.nowPlaying.upNext}</p>
           <div className="flex items-center gap-3">
-            <Artwork src={nextUp.thumb} className="size-10 rounded-[8px]" />
+            <Artwork src={nextUp.thumb} className="size-10 rounded-[0.5rem]" />
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{nextUp.title}</p>
               <p className="truncate text-xs text-fg-2">{nextUp.artist}</p>
@@ -127,16 +137,18 @@ function PanelBody({ tab, slot }: { tab: PanelTab; slot: number }) {
   );
 }
 
-function PanelTabs({ tab, onTab }: { tab: PanelTab; onTab: (t: PanelTab) => void }) {
+function PanelTabs({ tab, showLyrics, onTab }: { tab: PanelTab; showLyrics: boolean; onTab: (t: PanelTab) => void }) {
   const t = useT();
+  const tabs = [
+    ["playing", t.nowPlaying.tabPlaying],
+    ["lyrics", t.nowPlaying.tabLyrics],
+    ["queue", t.nowPlaying.tabQueue],
+  ] as const;
   return (
     <div role="tablist" className="flex gap-1">
-      {(
-        [
-          ["playing", t.nowPlaying.tabPlaying],
-          ["queue", t.nowPlaying.tabQueue],
-        ] as const
-      ).map(([id, label]) => (
+      {tabs
+        .filter(([id]) => showLyrics || id !== "lyrics")
+        .map(([id, label]) => (
         <button
           key={id}
           role="tab"
@@ -157,15 +169,15 @@ function PanelTabs({ tab, onTab }: { tab: PanelTab; onTab: (t: PanelTab) => void
 
 /** Docked right column (≥1280px). */
 export function SidePanel() {
-  const tab = useUi((s) => s.panelTab);
+  const { tab, showLyrics } = usePanelTab();
   const openPanel = useUi((s) => s.openPanel);
   const togglePanel = useUi((s) => s.togglePanel);
   const t = useT();
   return (
-    <aside className="island hidden w-[360px] shrink-0 xl:flex" aria-label={t.nowPlaying.panel}>
+    <aside className="island hidden w-[22.5rem] shrink-0 xl:flex" aria-label={t.nowPlaying.panel}>
       <div className="island-core flex w-full flex-col overflow-hidden">
         <div className="flex h-16 items-center justify-between px-3">
-          <PanelTabs tab={tab} onTab={openPanel} />
+          <PanelTabs tab={tab} showLyrics={showLyrics} onTab={openPanel} />
           <IconButton label={t.nowPlaying.closePanel} size="sm" onClick={() => togglePanel(tab)}>
             <XIcon size={18} />
           </IconButton>
@@ -181,7 +193,7 @@ export function SidePanel() {
 /** Same content as an overlay drawer for tablets and small laptops (768-1279px). */
 export function PanelDrawer() {
   const open = useUi((s) => s.drawerOpen);
-  const tab = useUi((s) => s.panelTab);
+  const { tab, showLyrics } = usePanelTab();
   const openPanel = useUi((s) => s.openPanel);
   const close = useUi((s) => s.closePanel);
   const reduce = useReducedMotion();
@@ -206,11 +218,11 @@ export function PanelDrawer() {
             animate={{ x: 0, opacity: 1 }}
             exit={reduce ? { opacity: 0 } : { x: "105%" }}
             transition={{ type: "spring", stiffness: 380, damping: 38 }}
-            className="island drawer-top absolute right-2 bottom-2 flex w-[380px] max-w-[calc(100vw-16px)]"
+            className="island drawer-top absolute right-2 bottom-2 flex w-[23.75rem] max-w-[calc(100vw-16px)]"
           >
             <div className="island-core flex w-full flex-col overflow-hidden">
               <div className="flex h-16 items-center justify-between px-3">
-                <PanelTabs tab={tab} onTab={openPanel} />
+                <PanelTabs tab={tab} showLyrics={showLyrics} onTab={openPanel} />
                 <IconButton label={t.common.close} size="sm" onClick={close}>
                   <XIcon size={18} />
                 </IconButton>
@@ -270,14 +282,16 @@ export function NowPlayingSheet({ open, onClose }: { open: boolean; onClose: () 
                 <CaretDownIcon size={24} />
               </IconButton>
               <div className="mx-auto mt-0 h-1 w-10 rounded-full bg-fg-3/50" />
-              <IconButton
-                label={view === "queue" ? t.nowPlaying.backToPlayer : t.nowPlaying.showQueue}
-                active={view === "queue"}
-                onClick={() => setView(view === "queue" ? "player" : "queue")}
-                className="-mr-2"
-              >
-                <QueueIcon size={22} />
-              </IconButton>
+              <div className="-mr-2 flex items-center" onPointerDown={(e) => e.stopPropagation()}>
+                <LyricsButton size="md" />
+                <IconButton
+                  label={view === "queue" ? t.nowPlaying.backToPlayer : t.nowPlaying.showQueue}
+                  active={view === "queue"}
+                  onClick={() => setView(view === "queue" ? "player" : "queue")}
+                >
+                  <QueueIcon size={22} />
+                </IconButton>
+              </div>
             </div>
 
             {view === "queue" ? (

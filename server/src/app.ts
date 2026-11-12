@@ -9,6 +9,7 @@ import { fileStorage } from "./libraryFile.js";
 import { findVideoFor, radio, search, suggestions } from "./search.js";
 import { proxyStream, serveFile } from "./stream.js";
 import { langOf, msg, tr } from "./i18n.js";
+import { lyricsFor } from "./lyrics.js";
 import { presentJob, startJob, systemInfo, type Channel } from "./system.js";
 import { refreshTools, type Tools } from "./tools.js";
 import { HttpError, VIDEO_ID } from "./types.js";
@@ -124,11 +125,33 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     return { track };
   });
 
+  // Lyrics (LRCLIB)
+
+  /** The track's lyrics, timed when LRCLIB has them timed: `lyrics` is null when there are none. */
+  app.get("/api/lyrics/:id", async (req) => {
+    const { title, artist, album, duration } = req.query as {
+      title?: string;
+      artist?: string;
+      album?: string;
+      duration?: string;
+    };
+    if (!title?.trim()) throw new HttpError(400, msg("missingTitle"));
+    const lyrics = await lyricsFor({
+      id: videoId(req.params),
+      title: title.slice(0, 200),
+      artist: (artist ?? "").slice(0, 200),
+      album: (album ?? "").slice(0, 200),
+      duration: Number(duration) || 0,
+    });
+    return { lyrics };
+  });
+
   // Playback
 
   /** Resolves stream URLs ahead of time so the next track starts instantly. */
   app.post("/api/prepare/:id", async (req) => {
-    const r = await resolveStreams(videoId(req.params));
+    const { kind } = req.query as { kind?: string };
+    const r = await resolveStreams(videoId(req.params), kind === "audio" ? "audio" : "video");
     return { id: r.id, title: r.title, duration: r.duration, hasSdVideo: !!r.video };
   });
 

@@ -59,6 +59,7 @@ Musike started from the idea behind the old Discord music bots: a server that fe
 - **Artists:** greatest hits, plus every album and single
 - **Albums:** open any album and play it in its original order, shuffle it, or save it as a playlist in one click
 - **Search a list:** type several songs separated by commas ("Bohemian Rhapsody, Hotel California, …"). Musike finds each one, picks the best match (you can swap it) and lets you play, favorite or send them all to a playlist
+- **Lyrics:** the mic button (or `Y`) shows the lyrics of the track being played as a page in the middle of the app, with the sections and the player still around it; the sung line is highlighted and followed as the song goes, and clicking a line plays from it. Timed lyrics come from [LRCLIB](https://lrclib.net)
 - Queue with play next, shuffle and repeat (queue or track)
 - **Autoplay radio:** when the queue ends, it keeps going with similar songs
 - Instant seeking (HTTP Range streaming) and the next track preloaded
@@ -75,7 +76,7 @@ Musike started from the idea behind the old Discord music bots: a server that fe
 - **Backup to a file** to move everything to another Musike: merge or replace, with a preview before importing
 
 **Make it yours**
-- **English** and **Brazilian Portuguese**, switchable in Settings (per device). Server messages and the genre names and bios that come from YouTube Music follow the same language
+- **English**, **Brazilian Portuguese**, **Spanish**, **Italian** and **Vietnamese**, switchable in Settings (per device). Server messages and the genre names and bios that come from YouTube Music follow the same language
 - Dark and light themes, and **any accent color**: 8 presets or a custom one. Musike adjusts text shades so they stay readable in both themes
 - Show or hide panels: the Now Playing panel, playlists in the sidebar, a compact icons-only sidebar, the album column, the background texture, and each section of the Home page
 - Responsive from 320 px phones to ultrawide monitors; lock screen, headphone and media key controls (Media Session); picks up the queue where you left off
@@ -340,6 +341,7 @@ On import the server validates every track (YouTube ID, sizes, `https://` images
 | `V` | Switch Audio / Video |
 | `F` | Cinema mode |
 | `Q` | Queue |
+| `Y` | Lyrics |
 | `/` | Search |
 | `?` | Shortcut list |
 
@@ -362,7 +364,7 @@ Server environment variables (all optional):
 
 ## API
 
-Every route answers JSON. Errors look like `{ "error": "message", "code"?: "tool_missing" | "maybe_outdated" | "bot_check" }`, with the message in the language of the `x-musike-lang` request header (`en` or `pt-BR`).
+Every route answers JSON. Errors look like `{ "error": "message", "code"?: "tool_missing" | "maybe_outdated" | "bot_check" }`, with the message in the language of the `x-musike-lang` request header (`en`, `pt-BR` or `it`).
 
 | Method | Route | Description |
 |---|---|---|
@@ -376,6 +378,7 @@ Every route answers JSON. Errors look like `{ "error": "message", "code"?: "tool
 | `GET` | `/api/artists/:aid` | An artist's greatest hits, albums and singles |
 | `GET` | `/api/albums/:alid` | An album's tracks in order |
 | `GET` | `/api/video-for/:id?title=&artist=&duration=` | A song's official music video |
+| `GET` | `/api/lyrics/:id?title=&artist=&album=&duration=` | The track's lyrics (timed when available), or `null` |
 | `POST` | `/api/prepare/:id` | Resolves a stream before playing |
 | `GET` | `/api/stream/:id/audio` | Audio with HTTP Range |
 | `GET` | `/api/stream/:id/video?q=sd\|hd` | Video with HTTP Range |
@@ -399,6 +402,7 @@ musike/
 │     ├─ app.ts         routes and startup (used by the CLI, the desktop app and Docker)
 │     ├─ browse.ts      genres, artists, albums
 │     ├─ search.ts      search, suggestions, radio and official music videos
+│     ├─ lyrics.ts      lyrics from LRCLIB: timed lines, instrumental flag, 24 h cache
 │     ├─ ytdlp.ts       stream resolution, HD cache, error messages
 │     ├─ stream.ts      proxy with HTTP Range
 │     ├─ library.ts     playlists, favorites, history and backup import
@@ -411,7 +415,7 @@ musike/
 │     ├─ player/        playback engine (audio, video, queue, Media Session)
 │     ├─ components/    player, panels, cinema mode, Settings, backup
 │     ├─ views/         Home, Search, Library, playlists, genres, artists, albums
-│     ├─ i18n/          English (the source) and Portuguese
+│     ├─ i18n/          English (the source), Portuguese and Italian
 │     ├─ native/        Android: server code running in the app, streams, media controls
 │     ├─ tv/            Android TV: remote (D-pad) navigation and the 10-foot interface
 │     └─ stores/        state (zustand), appearance preferences

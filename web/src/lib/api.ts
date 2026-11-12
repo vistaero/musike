@@ -5,6 +5,7 @@ import {
   type Channel,
   type ErrorCode,
   type ImportResult,
+  type Lyrics,
   type MusikeApi,
   type Prepared,
   type SystemInfo,
@@ -55,8 +56,18 @@ export const api: MusikeApi = {
     request<{ track: Track | null }>(
       `/api/video-for/${t.id}?${new URLSearchParams({ title: t.title, artist: t.artist, duration: String(t.duration || "") })}`,
     ).then((r) => r.track),
-  prepare: (id: string, signal?: AbortSignal) =>
-    request<Prepared>(`/api/prepare/${id}`, {
+  lyrics: (t: Track, signal?: AbortSignal) =>
+    request<{ lyrics: Lyrics | null }>(
+      `/api/lyrics/${t.id}?${new URLSearchParams({
+        title: t.title,
+        artist: t.artist,
+        album: t.album ?? "",
+        duration: String(t.duration || ""),
+      })}`,
+      { signal },
+    ).then((r) => r.lyrics),
+  prepare: (id: string, signal?: AbortSignal, kind: "audio" | "video" = "audio") =>
+    request<Prepared>(`/api/prepare/${id}?kind=${kind}`, {
       method: "POST",
       signal,
     }),
@@ -99,8 +110,8 @@ export async function saveFile(name: string, text: string) {
 /** The iOS app uses its native bridge even when its catalog comes from a server. */
 export const systemMedia: SystemMedia | null = iosMedia;
 
-/** What this build can do. The Android build has no video yet, no yt-dlp to manage, and retries expired streams. */
-export const capabilities = { video: !iosMedia, engineSettings: true, retryOnError: false };
+/** Server-backed clients use the iOS media bridge when it is available. */
+export const capabilities = { video: !iosMedia, engineSettings: true, retryOnError: false, offline: false };
 
 /** Media elements hide the HTTP error body; fetch it to show the real reason. */
 export async function explainStreamError(url: string): Promise<{ message: string; code?: ErrorCode }> {

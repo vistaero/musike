@@ -159,6 +159,26 @@
           retry: "Tentar de novo",
           names: { "yt-dlp": "yt-dlp (busca no YouTube)", deno: "Deno (desafios do YouTube)", ffmpeg: "FFmpeg (vídeo HD)" },
         },
+        it: {
+          starting: "Avvio in corso",
+          downloading: "Download dei componenti al primo avvio",
+          ready: "pronto",
+          extracting: "estrazione",
+          of: (got, total) => `${got} di ${total} MB`,
+          failed: "Impossibile avviare: ",
+          retry: "Riprova",
+          names: { "yt-dlp": "yt-dlp (ricerca YouTube)", deno: "Deno (verifiche YouTube)", ffmpeg: "FFmpeg (video HD)" },
+        },
+        vi: {
+          starting: "Đang khởi động",
+          downloading: "Đang tải các thành phần ở lần chạy đầu",
+          ready: "xong",
+          extracting: "đang giải nén",
+          of: (got, total) => `${got} trên ${total} MB`,
+          failed: "Không khởi động được: ",
+          retry: "Thử lại",
+          names: { "yt-dlp": "yt-dlp (tìm trên YouTube)", deno: "Deno (thử thách YouTube)", ffmpeg: "FFmpeg (video HD)" },
+        },
       };
       const lang = new URLSearchParams(location.search).get("lang");
       const t = TEXTS[lang] ?? TEXTS.en;

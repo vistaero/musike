@@ -3,21 +3,25 @@ import { desktop } from "../lib/desktop";
 import { en, type Messages } from "./en";
 import { pt } from "./pt";
 import { es } from "./es";
+import { it } from "./it";
+import { vi } from "./vi";
 
 export type { Messages };
-export type Lang = "en" | "pt-BR" | "es-ES";
+export type Lang = "en" | "pt-BR" | "es-ES" | "it" | "vi";
 
 /** Each language named in itself, as language pickers do. */
 export const LANGUAGES: { id: Lang; name: string }[] = [
   { id: "en", name: "English" },
   { id: "pt-BR", name: "Português (Brasil)" },
   { id: "es-ES", name: "Español (España)" },
+  { id: "it", name: "Italiano" },
+  { id: "vi", name: "Tiếng Việt" },
 ];
 
-const MESSAGES: Record<Lang, Messages> = { en, "pt-BR": pt, "es-ES": es };
+const MESSAGES: Record<Lang, Messages> = { en, "pt-BR": pt, "es-ES": es, it, vi };
 const KEY = "musike:lang";
 
-export const isLang = (v: unknown): v is Lang => v === "en" || v === "pt-BR" || v === "es-ES";
+export const isLang = (v: unknown): v is Lang => v === "en" || v === "pt-BR" || v === "es-ES" || v === "it" || v === "vi";
 
 // The native Mac host supplies its localization before the engine starts.
 const systemLanguage = (window as Window & { __musikeSystemLanguage?: unknown }).__musikeSystemLanguage;

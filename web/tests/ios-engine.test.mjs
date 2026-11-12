@@ -15,6 +15,11 @@ for (const [mode, backend] of [["ios", "/src/native/api.ts"], ["ios-server", "/s
     if (mode === "mac") {
       assert.ok(modules.some((id) => id.endsWith("/src/native/mac-storage.ts")), "Mac must use its own persistent storage");
       assert.ok(!modules.some((id) => id.endsWith("/src/native/storage.ts")), "Mac must not use the iOS filesystem plugin");
+      assert.ok(modules.some((id) => id.endsWith("/src/lib/offline.ts")), "Mac must use the offline fallback");
+      assert.ok(!modules.some((id) => id.endsWith("/src/native/offline.ts")), "Mac cannot use the Capacitor offline plugin");
+    }
+    if (mode === "ios") {
+      assert.ok(modules.some((id) => id.endsWith("/src/native/offline.ts")), "iOS must use native offline storage");
     }
     const oldUI = modules.filter((id) => /\/src\/(views|components)\//.test(id) || /\/node_modules\/(?:\.pnpm\/)?(?:react|react-dom|react-router)(?:@|\/)/.test(id));
     assert.deepEqual(oldUI, [], `the iOS engine should not include web screens or React: ${oldUI.join(", ")}`);

@@ -55,6 +55,22 @@ export interface Prepared {
   hasSdVideo: boolean;
 }
 
+/** One line of lyrics, with the second of the track it starts on (0 for every line when unsynced). */
+export interface LyricLine {
+  time: number;
+  text: string;
+}
+
+export interface Lyrics {
+  /** Each line carries its own time, so the app can highlight the line being sung. */
+  synced: boolean;
+  /** No singing by design: the app says so instead of "not found". */
+  instrumental: boolean;
+  lines: LyricLine[];
+  sourceDuration: number | null;
+  source: string;
+}
+
 /**
  * The operating system's media controls (notification, lock screen, headphone buttons) when the browser's
  * Media Session can't reach them: the Android app. Absent elsewhere.
@@ -63,6 +79,34 @@ export interface SystemMedia {
   setTrack(track: { title: string; artist: string; album: string; artwork: string }): void;
   setState(state: { playing: boolean; position: number; duration: number }): void;
   onAction(handler: (action: "play" | "pause" | "next" | "previous" | "seek", position?: number) => void): void;
+}
+
+/** A track saved on the device, so it plays without a connection. */
+export interface OfflineEntry {
+  track: Track;
+  /** Bytes on disk. */
+  size: number;
+  /** When it was saved (epoch ms). */
+  at: number;
+  /** Where the audio lives, relative to the app's data directory. */
+  file: string;
+}
+
+/**
+ * Saving tracks to native device storage. Other builds expose the same API with `supported` set to false.
+ */
+export interface OfflineApi {
+  supported: boolean;
+  /** Everything saved, by track id. */
+  load(): Promise<Record<string, OfflineEntry>>;
+  /** One saved track, or null. */
+  entry(id: string): Promise<OfflineEntry | null>;
+  /** Saves a track's audio, reporting progress from 0 to 1. */
+  save(track: Track, onProgress: (fraction: number) => void): Promise<OfflineEntry>;
+  remove(id: string): Promise<void>;
+  clear(): Promise<void>;
+  /** A local address the player can use for a saved track, or null. */
+  src(id: string): Promise<string | null>;
 }
 
 export interface MusikeApi {
@@ -77,7 +121,9 @@ export interface MusikeApi {
   searchAlbums(q: string, signal?: AbortSignal): Promise<AlbumCard[]>;
   /** The music video matching a song, or null when YouTube has none. */
   videoFor(t: Track): Promise<Track | null>;
-  prepare(id: string, signal?: AbortSignal): Promise<Prepared>;
+  /** The track's lyrics (timed when the source has them timed), or null when there are none. */
+  lyrics(t: Track, signal?: AbortSignal): Promise<Lyrics | null>;
+  prepare(id: string, signal?: AbortSignal, kind?: "audio" | "video"): Promise<Prepared>;
 
   library(): Promise<Library>;
   addFavorite(t: Track): Promise<{ favorites: Track[] }>;
