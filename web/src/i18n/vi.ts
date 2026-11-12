@@ -121,6 +121,7 @@ export const vi: Messages = {
       video: "Bật/tắt video",
       theater: "Phóng to video",
       queue: "Hàng chờ",
+      lyrics: "Lời bài hát",
       search: "Tìm kiếm",
       help: "Danh sách này",
     },
@@ -177,6 +178,7 @@ export const vi: Messages = {
     startRadio: "Bật radio từ bài này",
     upNext: "Phát tiếp",
     tabPlaying: "Đang phát",
+    tabLyrics: "Lời bài hát",
     tabQueue: "Hàng chờ",
     panel: "Đang phát và hàng chờ",
     closePanel: "Đóng bảng",
@@ -184,6 +186,17 @@ export const vi: Messages = {
     showQueue: "Hiện hàng chờ",
   },
 
+  lyrics: {
+    show: "Lời bài hát",
+    title: "Lời bài hát",
+    loading: "Đang tìm lời bài hát…",
+    none: "Không tìm thấy lời cho bài hát này.",
+    error: "Không thể tải lời bài hát. Kiểm tra kết nối và thử lại.",
+    retry: "Thử lại",
+    instrumental: "Bài nhạc không lời.",
+    unsynced: "Lời bài hát này chưa được đồng bộ.",
+    source: "Lời bài hát từ",
+  },
   queue: {
     emptyTitle: "Hàng chờ đang trống",
     emptyBody: 'Phát một bài hoặc dùng "Thêm vào hàng chờ" trong menu của bài hát.',

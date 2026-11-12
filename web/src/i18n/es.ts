@@ -48,7 +48,7 @@ export const es: Messages = {
     createAndAdd: "Crear y añadir", shortcutsTitle: "Atajos de teclado", space: "Espacio",
     shortcuts: { playPause: "Reproducir / pausar", seek: "Retroceder / avanzar 5 s", skip: "Pista anterior / siguiente",
       volume: "Volumen", mute: "Silenciar", favorite: "Añadir la pista actual a favoritos", shuffle: "Aleatorio",
-      repeat: "Repetir", video: "Activar o desactivar vídeo", theater: "Maximizar vídeo", queue: "Cola", search: "Buscar", help: "Esta lista" },
+      repeat: "Repetir", video: "Activar o desactivar vídeo", theater: "Maximizar vídeo", queue: "Cola", lyrics: "Letra", search: "Buscar", help: "Esta lista" },
   },
   player: {
     repeatOff: "Repetir: desactivado", repeatAll: "Repetir: cola", repeatOne: "Repetir: pista",
@@ -69,8 +69,19 @@ export const es: Messages = {
   },
   nowPlaying: {
     title: "En reproducción", coverOf: (title) => `Portada de ${title}`, playSomething: "Reproduce algo para verlo aquí.",
-    startRadio: "Iniciar radio a partir de esta pista", upNext: "A continuación", tabPlaying: "Reproducción", tabQueue: "Cola",
-    panel: "Reproducción actual y cola", closePanel: "Cerrar panel", backToPlayer: "Volver al reproductor", showQueue: "Mostrar cola",
+    startRadio: "Iniciar radio a partir de esta pista", upNext: "A continuación", tabPlaying: "Reproducción", tabLyrics: "Letra", tabQueue: "Cola",
+    panel: "Reproducción actual, letra y cola", closePanel: "Cerrar panel", backToPlayer: "Volver al reproductor", showQueue: "Mostrar cola",
+  },
+  lyrics: {
+    show: "Letra",
+    title: "Letra",
+    loading: "Buscando la letra…",
+    none: "No se ha encontrado la letra de esta pista.",
+    error: "No se ha podido cargar la letra. Comprueba la conexión e inténtalo de nuevo.",
+    retry: "Reintentar",
+    instrumental: "Pista instrumental: no tiene letra.",
+    unsynced: "Esta letra no está sincronizada.",
+    source: "Letra de",
   },
   queue: {
     emptyTitle: "La cola está vacía", emptyBody: 'Reproduce una canción o usa «Añadir a la cola» en el menú de cualquier pista.',

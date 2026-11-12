@@ -115,6 +115,7 @@ export const it: Messages = {
       video: "Attiva / disattiva video",
       theater: "Ingrandisci video",
       queue: "Coda",
+      lyrics: "Testo",
       search: "Cerca",
       help: "Questa lista",
     },
@@ -171,6 +172,7 @@ export const it: Messages = {
     startRadio: "Avvia radio da questo brano",
     upNext: "Prossimo brano",
     tabPlaying: "In ascolto",
+    tabLyrics: "Testo",
     tabQueue: "Coda",
     panel: "In riproduzione e coda",
     closePanel: "Chiudi pannello",
@@ -178,6 +180,17 @@ export const it: Messages = {
     showQueue: "Mostra coda",
   },
 
+  lyrics: {
+    show: "Testo",
+    title: "Testo",
+    loading: "Ricerca del testo…",
+    none: "Nessun testo trovato per questo brano.",
+    error: "Impossibile caricare il testo. Controlla la connessione e riprova.",
+    retry: "Riprova",
+    instrumental: "Brano strumentale: non contiene testo.",
+    unsynced: "Questo testo non è sincronizzato.",
+    source: "Testo da",
+  },
   queue: {
     emptyTitle: "La coda è vuota",
     emptyBody: 'Riproduci un brano oppure usa "Aggiungi alla coda" dal menu di qualsiasi brano.',
