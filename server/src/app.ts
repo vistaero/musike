@@ -151,7 +151,7 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   /** Resolves stream URLs ahead of time so the next track starts instantly. */
   app.post("/api/prepare/:id", async (req) => {
     const { kind } = req.query as { kind?: string };
-    const r = await resolveStreams(videoId(req.params), kind === "video" ? "video" : "audio");
+    const r = await resolveStreams(videoId(req.params), kind === "audio" ? "audio" : "video");
     return { id: r.id, title: r.title, duration: r.duration, hasSdVideo: !!r.video };
   });
 

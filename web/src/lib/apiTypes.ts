@@ -81,6 +81,34 @@ export interface SystemMedia {
   onAction(handler: (action: "play" | "pause" | "next" | "previous" | "seek", position?: number) => void): void;
 }
 
+/** A track saved on the device, so it plays without a connection. */
+export interface OfflineEntry {
+  track: Track;
+  /** Bytes on disk. */
+  size: number;
+  /** When it was saved (epoch ms). */
+  at: number;
+  /** Where the audio lives, relative to the app's data directory. */
+  file: string;
+}
+
+/**
+ * Saving tracks to native device storage. Other builds expose the same API with `supported` set to false.
+ */
+export interface OfflineApi {
+  supported: boolean;
+  /** Everything saved, by track id. */
+  load(): Promise<Record<string, OfflineEntry>>;
+  /** One saved track, or null. */
+  entry(id: string): Promise<OfflineEntry | null>;
+  /** Saves a track's audio, reporting progress from 0 to 1. */
+  save(track: Track, onProgress: (fraction: number) => void): Promise<OfflineEntry>;
+  remove(id: string): Promise<void>;
+  clear(): Promise<void>;
+  /** A local address the player can use for a saved track, or null. */
+  src(id: string): Promise<string | null>;
+}
+
 export interface MusikeApi {
   search(q: string, type: "song" | "video", signal?: AbortSignal): Promise<Track[]>;
   suggest(q: string, signal?: AbortSignal): Promise<string[]>;

@@ -171,11 +171,11 @@ export function SettingsDialog() {
         <section className="flex flex-col gap-3">
           <h3 className="text-xs font-medium text-fg-3">{t.settings.engine}</h3>
 
-          <div className="flex flex-col gap-4 rounded-[16px] bg-surface-1 p-4 ring-1 ring-line">
+          <div className="flex flex-col gap-4 rounded-[1rem] bg-surface-1 p-4 ring-1 ring-line">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-semibold tracking-tight">yt-dlp</p>
-                <p className="font-mono text-[13px] text-fg-2 tabular-nums">
+                <p className="font-mono text-[0.8125rem] text-fg-2 tabular-nums">
                   {status === "loading" && !info ? t.settings.checking : y?.version ?? t.settings.noVersion}
                   {y?.version && <span className="text-fg-3"> · {y.channel === "nightly" ? t.settings.nightly : t.settings.stable}</span>}
                 </p>
@@ -238,7 +238,7 @@ export function SettingsDialog() {
                 <pre
                   ref={logBox}
                   aria-live="polite"
-                  className="max-h-36 overflow-y-auto rounded-[10px] bg-bg p-3 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-fg-2 scroll-area"
+                  className="max-h-36 overflow-y-auto rounded-[0.625rem] bg-bg p-3 font-mono text-[0.6875rem] leading-relaxed whitespace-pre-wrap text-fg-2 scroll-area"
                 >
                   {job.log.length ? job.log.join("\n") : t.settings.starting}
                 </pre>
