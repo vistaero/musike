@@ -19,9 +19,11 @@ struct MacMiniPlayer: View {
     let openPlayer: () -> Void
     let onAction: (MacNowPlayingAction) -> Void
     var toolbarHovered: Bool? = nil
+    var toolbarBottomInset: CGFloat = 0
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var collection = MacMusicLibrary.shared
     @State private var hovering = false
+    @State private var hoveringProgress = false
     @State private var seekPreview: Double?
     @State private var seekTask: Task<Void, Never>?
 
@@ -35,7 +37,7 @@ struct MacMiniPlayer: View {
     private var subtitle: String {
         [track.artist, track.album ?? ""].filter { !$0.isEmpty }.joined(separator: " — ")
     }
-    private var pointerInside: Bool { toolbarHovered ?? hovering }
+    private var pointerInside: Bool { hoveringProgress || (toolbarHovered ?? hovering) }
     private var showingTimes: Bool { pointerInside || seekPreview != nil }
 
     var body: some View {
@@ -56,8 +58,9 @@ struct MacMiniPlayer: View {
                 .accessibilityLabel(engine.text("Open player", "Abrir reproductor", "Abrir reprodutor"))
             ZStack(alignment: .bottom) {
                 metadata
-                    .padding(.bottom, 3)
+                    .padding(.bottom, 3 + toolbarBottomInset)
                 progress
+                    .padding(.bottom, toolbarBottomInset)
             }
         }
         .frame(height: Self.height)
@@ -93,7 +96,7 @@ struct MacMiniPlayer: View {
             .font(.system(size: 10).monospacedDigit())
             .foregroundStyle(.tertiary)
             .padding(.horizontal, 6)
-            .padding(.top, 21)
+            .padding(.top, 21 - toolbarBottomInset / 2)
             .opacity(showingTimes ? 1 : 0)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
@@ -113,45 +116,19 @@ struct MacMiniPlayer: View {
     }
 
     private var progress: some View {
-        GeometryReader { geometry in
-            let fraction = duration > 0 ? position / duration : 0
-            let end = geometry.size.width * fraction
-            ZStack(alignment: .bottomLeading) {
-                Rectangle().fill(.primary.opacity(0.14)).frame(height: 3)
-                Rectangle().fill(.primary.opacity(0.45)).frame(width: end, height: 3)
-                if showingTimes && duration > 0 {
-                    RoundedRectangle(cornerRadius: 0.75)
-                        .fill(.primary.opacity(0.65))
-                        .frame(width: 4, height: 7)
-                        .offset(x: min(max(0, end - 2), max(0, geometry.size.width - 4)))
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            .contentShape(Rectangle())
-            .gesture(DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    guard duration > 0, geometry.size.width > 0 else { return }
-                    seekTask?.cancel()
-                    seekPreview = duration * min(1, max(0, value.location.x / geometry.size.width))
-                }
-                .onEnded { value in
-                    guard duration > 0, geometry.size.width > 0 else { return }
-                    seek(to: duration * min(1, max(0, value.location.x / geometry.size.width)))
-                }
-            )
-        }
-        .frame(height: 9)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(engine.text("Playback position", "Posición de reproducción", "Posição da reprodução"))
-        .accessibilityValue(macTime(position) + " / " + macTime(duration))
-        .accessibilityAdjustableAction { direction in
-            guard duration > 0 else { return }
-            switch direction {
-            case .increment: seek(to: min(duration, position + 5))
-            case .decrement: seek(to: max(0, position - 5))
-            @unknown default: break
-            }
-        }
+        MacPlaybackTimeline(
+            position: position,
+            duration: duration,
+            showsHandle: showingTimes,
+            accessibilityLabel: engine.text("Playback position", "Posición de reproducción", "Posição da reprodução"),
+            onHover: { hoveringProgress = $0 },
+            onPreview: { value in
+                seekTask?.cancel()
+                seekPreview = value
+            },
+            onSeek: seek(to:)
+        )
+        .frame(height: 12)
     }
 
     private func seek(to position: Double) {
@@ -271,6 +248,115 @@ struct MacMiniPlayer: View {
             }
         } catch {
             engine.error = error.localizedDescription
+        }
+    }
+}
+
+private struct MacPlaybackTimeline: UIViewRepresentable {
+    let position: Double
+    let duration: Double
+    let showsHandle: Bool
+    let accessibilityLabel: String
+    let onHover: (Bool) -> Void
+    let onPreview: (Double?) -> Void
+    let onSeek: (Double) -> Void
+
+    func makeUIView(context: Context) -> TimelineControl { TimelineControl() }
+
+    func updateUIView(_ control: TimelineControl, context: Context) {
+        control.position = position
+        control.duration = duration
+        control.showsHandle = showsHandle
+        control.accessibilityLabel = accessibilityLabel
+        control.accessibilityValue = macTime(position) + " / " + macTime(duration)
+        control.accessibilityTraits = duration > 0 ? .adjustable : [.adjustable, .notEnabled]
+        control.onHover = onHover
+        control.onPreview = onPreview
+        control.onSeek = onSeek
+        control.setNeedsDisplay()
+    }
+
+    final class TimelineControl: UIControl {
+        var position = 0.0
+        var duration = 0.0
+        var showsHandle = false
+        var onHover: ((Bool) -> Void)?
+        var onPreview: ((Double?) -> Void)?
+        var onSeek: ((Double) -> Void)?
+        private var pointerInside = false
+        private var trackedPosition: Double?
+
+        init() {
+            super.init(frame: .zero)
+            isOpaque = false
+            backgroundColor = .clear
+            isAccessibilityElement = true
+            let pointer = UIHoverGestureRecognizer(target: self, action: #selector(pointerMoved(_:)))
+            pointer.cancelsTouchesInView = false
+            addGestureRecognizer(pointer)
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+        override func draw(_ rect: CGRect) {
+            let bar = CGRect(x: 0, y: bounds.maxY - 3, width: bounds.width, height: 3)
+            let end = duration > 0 ? bounds.width * position / duration : 0
+            let ink = UIColor.label.resolvedColor(with: traitCollection)
+            ink.withAlphaComponent(0.14).setFill()
+            UIRectFill(bar)
+            ink.withAlphaComponent(0.45).setFill()
+            UIRectFill(CGRect(x: 0, y: bar.minY, width: end, height: bar.height))
+            if duration > 0 && (showsHandle || isTracking) {
+                let left = min(max(0, end - 2), max(0, bounds.width - 4))
+                let handle = CGRect(x: left, y: bounds.maxY - 7, width: 4, height: 7)
+                ink.withAlphaComponent(0.65).setFill()
+                UIBezierPath(roundedRect: handle, cornerRadius: 0.75).fill()
+            }
+        }
+
+        override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+            guard duration > 0, bounds.width > 0 else { return false }
+            preview(at: touch.location(in: self).x)
+            return true
+        }
+
+        override func continueTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+            preview(at: touch.location(in: self).x)
+            return true
+        }
+
+        override func endTracking(_ touch: UITouch?, with event: UIEvent?) {
+            if let touch { preview(at: touch.location(in: self).x) }
+            if let trackedPosition { onSeek?(trackedPosition) }
+            trackedPosition = nil
+        }
+
+        override func cancelTracking(with event: UIEvent?) {
+            trackedPosition = nil
+            onPreview?(nil)
+        }
+
+        override func accessibilityIncrement() {
+            if duration > 0 { onSeek?(min(duration, position + 5)) }
+        }
+
+        override func accessibilityDecrement() {
+            if duration > 0 { onSeek?(max(0, position - 5)) }
+        }
+
+        private func preview(at x: CGFloat) {
+            guard bounds.width > 0 else { return }
+            let value = duration * min(1, max(0, x / bounds.width))
+            trackedPosition = value
+            onPreview?(value)
+        }
+
+        @objc private func pointerMoved(_ pointer: UIHoverGestureRecognizer) {
+            let tracking = pointer.state == .began || pointer.state == .changed
+            let inside = tracking && bounds.contains(pointer.location(in: self))
+            guard inside != pointerInside else { return }
+            pointerInside = inside
+            onHover?(inside)
         }
     }
 }

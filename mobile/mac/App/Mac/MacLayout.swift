@@ -471,7 +471,7 @@ private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
     private let playerShown: Binding<Bool>
     private let installed: Binding<Bool>
     private let onAction: (MacNowPlayingAction) -> Void
-    private let trackHover = MacToolbarTrackHover()
+    private let trackState = MacToolbarTrackState()
     private var toolbar: NSToolbar?
     private var hosts: [MacPlaybackSection: UIHostingController<MacPlaybackBar>] = [:]
     private var widths: [MacPlaybackSection: NSLayoutConstraint] = [:]
@@ -514,7 +514,7 @@ private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
 
     private func controls(for section: MacPlaybackSection) -> MacPlaybackBar {
         MacPlaybackBar(engine: engine, queueShown: queueShown, playerShown: playerShown,
-                       compact: lastWidth < 840, section: section, onAction: onAction, trackHover: trackHover)
+                       compact: lastWidth < 840, section: section, onAction: onAction, trackState: trackState)
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -537,7 +537,7 @@ private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
         host.safeAreaRegions = []
         let content: UIView = host.view
         content.backgroundColor = .clear
-        let itemView: UIView = section == .track ? MacToolbarTrackView(content: content, hover: trackHover) : content
+        let itemView: UIView = section == .track ? MacToolbarTrackView(content: content, state: trackState) : content
         itemView.translatesAutoresizingMaskIntoConstraints = false
         let width = itemView.widthAnchor.constraint(equalToConstant: section.width(for: lastWidth))
         let height = section == .track ? MacMiniPlayer.height : 50
@@ -550,19 +550,24 @@ private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
     }
 }
 
-private final class MacToolbarTrackHover: ObservableObject {
+private final class MacToolbarTrackState: ObservableObject {
     @Published private(set) var isInside = false
+    @Published private(set) var bottomInset: CGFloat = 0
 
     func setInside(_ inside: Bool) {
         if isInside != inside { isInside = inside }
     }
+
+    func setBottomInset(_ inset: CGFloat) {
+        if bottomInset != inset { bottomInset = inset }
+    }
 }
 
 private final class MacToolbarTrackView: UIView {
-    private let hover: MacToolbarTrackHover
+    private let state: MacToolbarTrackState
 
-    init(content: UIView, hover: MacToolbarTrackHover) {
-        self.hover = hover
+    init(content: UIView, state: MacToolbarTrackState) {
+        self.state = state
         super.init(frame: .zero)
         addSubview(content)
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -582,12 +587,24 @@ private final class MacToolbarTrackView: UIView {
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        if window == nil { hover.setInside(false) }
+        if window == nil { state.setInside(false) }
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard let window, window.bounds.height > 0 else { return }
+        // AppKit may draw a UIKit toolbar item outside its window's mouse-event area.
+        let visibleBounds = convert(window.bounds, from: window)
+        let inset = max(0, bounds.maxY - visibleBounds.maxY)
+        if inset != state.bottomInset {
+            DispatchQueue.main.async { [weak self] in self?.state.setBottomInset(inset) }
+        }
     }
 
     @objc private func pointerMoved(_ pointer: UIHoverGestureRecognizer) {
         let tracking = pointer.state == .began || pointer.state == .changed
-        hover.setInside(tracking && bounds.contains(pointer.location(in: self)))
+        state.setInside(tracking && bounds.contains(pointer.location(in: self)))
     }
 }
 
@@ -598,7 +615,7 @@ private struct MacPlaybackBar: View {
     let compact: Bool
     var section: MacPlaybackSection?
     let onAction: (MacNowPlayingAction) -> Void
-    @ObservedObject var trackHover = MacToolbarTrackHover()
+    @ObservedObject var trackState = MacToolbarTrackState()
     @State private var volumePreview: Double?
     @State private var adjustingVolume = false
     @State private var volumeRevision = 0
@@ -675,7 +692,8 @@ private struct MacPlaybackBar: View {
     @ViewBuilder private var nowPlaying: some View {
         if let track = engine.player.current {
             MacMiniPlayer(engine: engine, track: track, openPlayer: { playerShown = true }, onAction: onAction,
-                          toolbarHovered: section == .track ? trackHover.isInside : nil)
+                          toolbarHovered: section == .track ? trackState.isInside : nil,
+                          toolbarBottomInset: section == .track ? trackState.bottomInset : 0)
                 .id(track.id)
         } else {
             ZStack(alignment: .leading) {
