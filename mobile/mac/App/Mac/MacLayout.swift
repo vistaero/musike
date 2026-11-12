@@ -147,12 +147,15 @@ struct MacRootView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                TextField(engine.text("Search", "Buscar", "Buscar"), text: $search, onEditingChanged: { active in if active { page = .search } })
-                    .textFieldStyle(.plain)
-                    .onChange(of: search) { value in if !value.isEmpty { page = .search } }
-            }.padding(7).background(Color.primary.opacity(0.08)).cornerRadius(7).padding(.horizontal, 12).padding(.top, nativeToolbarInstalled ? 16 : 54).padding(.bottom, 14)
+            MacSidebarSearchField(
+                title: engine.text("Search", "Buscar", "Buscar"),
+                query: $search,
+                isSearchPage: page == .search,
+                activateSearch: { page = .search }
+            )
+            .padding(.horizontal, 12)
+            .padding(.top, nativeToolbarInstalled ? 16 : 54)
+            .padding(.bottom, 14)
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     sidebarHeading(engine.text("Library", "Biblioteca", "Biblioteca"))
@@ -265,6 +268,31 @@ struct MacRootView: View {
 }
 
 private let macSidebarWidth: CGFloat = 200
+
+private struct MacSidebarSearchField: View {
+    let title: String
+    @Binding var query: String
+    let isSearchPage: Bool
+    let activateSearch: () -> Void
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass").foregroundColor(.secondary)
+            TextField(title, text: $query)
+                .textFieldStyle(.plain)
+                .focused($isFocused)
+        }
+        .padding(7)
+        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+        .onChange(of: isFocused) { focused in
+            if focused { activateSearch() }
+        }
+        .onChange(of: isSearchPage) { active in
+            if !active { isFocused = false }
+        }
+    }
+}
 
 private struct MacLibrarySplitView<Sidebar: View, Detail: View>: UIViewControllerRepresentable {
     var sidebar: Sidebar
