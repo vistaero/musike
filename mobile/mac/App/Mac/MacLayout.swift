@@ -453,7 +453,7 @@ private enum MacPlaybackSection: String, CaseIterable {
     func width(for windowWidth: CGFloat) -> CGFloat {
         let compact = windowWidth < 840
         switch self {
-        case .transport: return compact ? 126 : 155
+        case .transport: return compact ? 126 : 166
         case .output: return compact ? 174 : 200
         case .track:
             let available = windowWidth - macSidebarWidth
@@ -471,6 +471,7 @@ private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
     private let playerShown: Binding<Bool>
     private let installed: Binding<Bool>
     private let onAction: (MacNowPlayingAction) -> Void
+    private let trackHover = MacToolbarTrackHover()
     private var toolbar: NSToolbar?
     private var hosts: [MacPlaybackSection: UIHostingController<MacPlaybackBar>] = [:]
     private var widths: [MacPlaybackSection: NSLayoutConstraint] = [:]
@@ -513,7 +514,7 @@ private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
 
     private func controls(for section: MacPlaybackSection) -> MacPlaybackBar {
         MacPlaybackBar(engine: engine, queueShown: queueShown, playerShown: playerShown,
-                       compact: lastWidth < 840, section: section, onAction: onAction)
+                       compact: lastWidth < 840, section: section, onAction: onAction, trackHover: trackHover)
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -534,15 +535,59 @@ private final class MacToolbarAnchor: UIView, NSToolbarDelegate {
         let host = UIHostingController(rootView: controls(for: section))
         // The hosting view is already inside the title bar.
         host.safeAreaRegions = []
-        host.view.backgroundColor = .clear
-        host.view.translatesAutoresizingMaskIntoConstraints = false
-        let width = host.view.widthAnchor.constraint(equalToConstant: section.width(for: lastWidth))
-        NSLayoutConstraint.activate([width, host.view.heightAnchor.constraint(equalToConstant: 50)])
+        let content: UIView = host.view
+        content.backgroundColor = .clear
+        let itemView: UIView = section == .track ? MacToolbarTrackView(content: content, hover: trackHover) : content
+        itemView.translatesAutoresizingMaskIntoConstraints = false
+        let width = itemView.widthAnchor.constraint(equalToConstant: section.width(for: lastWidth))
+        let height = section == .track ? MacMiniPlayer.height : 50
+        NSLayoutConstraint.activate([width, itemView.heightAnchor.constraint(equalToConstant: height)])
         if flag {
             widths[section] = width
             hosts[section] = host
         }
-        return NSUIViewToolbarItem(itemIdentifier: identifier, uiView: host.view)
+        return NSUIViewToolbarItem(itemIdentifier: identifier, uiView: itemView)
+    }
+}
+
+private final class MacToolbarTrackHover: ObservableObject {
+    @Published private(set) var isInside = false
+
+    func setInside(_ inside: Bool) {
+        if isInside != inside { isInside = inside }
+    }
+}
+
+private final class MacToolbarTrackView: UIView {
+    private let hover: MacToolbarTrackHover
+
+    init(content: UIView, hover: MacToolbarTrackHover) {
+        self.hover = hover
+        super.init(frame: .zero)
+        addSubview(content)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+            content.topAnchor.constraint(equalTo: topAnchor),
+            content.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+        // Track the whole toolbar item, including the space between SwiftUI controls.
+        let pointer = UIHoverGestureRecognizer(target: self, action: #selector(pointerMoved(_:)))
+        pointer.cancelsTouchesInView = false
+        addGestureRecognizer(pointer)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil { hover.setInside(false) }
+    }
+
+    @objc private func pointerMoved(_ pointer: UIHoverGestureRecognizer) {
+        let tracking = pointer.state == .began || pointer.state == .changed
+        hover.setInside(tracking && bounds.contains(pointer.location(in: self)))
     }
 }
 
@@ -553,6 +598,7 @@ private struct MacPlaybackBar: View {
     let compact: Bool
     var section: MacPlaybackSection?
     let onAction: (MacNowPlayingAction) -> Void
+    @ObservedObject var trackHover = MacToolbarTrackHover()
     @State private var volumePreview: Double?
     @State private var adjustingVolume = false
     @State private var volumeRevision = 0
@@ -581,7 +627,7 @@ private struct MacPlaybackBar: View {
     }
 
     private var transport: some View {
-        HStack(spacing: compact ? 10 : 14) {
+        HStack(spacing: compact ? 1 : 6) {
             control("shuffle", "shuffle", active: engine.player.shuffle)
             control("backward.end.fill", "previous")
             control(engine.player.status == "playing" ? "pause.fill" : "play.fill", "toggle", size: 18)
@@ -620,25 +666,74 @@ private struct MacPlaybackBar: View {
     }
 
     private func control(_ symbol: String, _ action: String, active: Bool = false, size: CGFloat = 13) -> some View {
-        Button { engine.call(action) } label: { Image(systemName: symbol).font(.system(size: size, weight: .semibold)) }
-            .buttonStyle(.plain).foregroundColor(active ? engine.accent : .primary)
+        MacTransportButton(symbol: symbol, size: size, tint: active ? UIColor(engine.accent) : .label, label: action) {
+            engine.call(action)
+        }
+            .frame(width: compact ? 24 : 28, height: compact ? 24 : 28)
             .disabled(engine.player.current == nil && action != "shuffle" && action != "repeat")
-            .accessibilityLabel(action)
     }
     @ViewBuilder private var nowPlaying: some View {
         if let track = engine.player.current {
-            MacMiniPlayer(engine: engine, track: track, openPlayer: { playerShown = true }, onAction: onAction)
+            MacMiniPlayer(engine: engine, track: track, openPlayer: { playerShown = true }, onAction: onAction,
+                          toolbarHovered: section == .track ? trackHover.isInside : nil)
                 .id(track.id)
         } else {
             ZStack(alignment: .leading) {
                 Text("Musike").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
                 Image(systemName: "music.note").foregroundStyle(.secondary)
-                    .frame(width: 42, height: 42).background(Color.primary.opacity(0.1))
+                    .frame(width: MacMiniPlayer.height, height: MacMiniPlayer.height).background(Color.primary.opacity(0.1))
                     .accessibilityHidden(true)
             }
             .background(Color.primary.opacity(0.09), in: RoundedRectangle(cornerRadius: 3))
             .clipShape(RoundedRectangle(cornerRadius: 3))
+        }
+    }
+}
+
+private struct MacTransportButton: UIViewRepresentable {
+    let symbol: String
+    let size: CGFloat
+    let tint: UIColor
+    let label: String
+    let action: () -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeUIView(context: Context) -> TransportButton {
+        let button = TransportButton(type: .custom)
+        button.layer.cornerRadius = 6
+        let pointer = UIHoverGestureRecognizer(target: button, action: #selector(TransportButton.pointerMoved(_:)))
+        pointer.cancelsTouchesInView = false
+        button.addGestureRecognizer(pointer)
+        button.addAction(UIAction { [weak button] _ in button?.performAction?() }, for: .primaryActionTriggered)
+        return button
+    }
+
+    func updateUIView(_ button: TransportButton, context: Context) {
+        let configuration = UIImage.SymbolConfiguration(pointSize: size, weight: .semibold)
+        button.setImage(UIImage(systemName: symbol, withConfiguration: configuration), for: .normal)
+        button.tintColor = tint
+        button.isEnabled = isEnabled
+        button.accessibilityLabel = label
+        button.performAction = action
+    }
+
+    final class TransportButton: UIButton {
+        var performAction: (() -> Void)?
+        private var pointerInside = false
+
+        override var isEnabled: Bool { didSet { updateHighlight() } }
+        override var isHighlighted: Bool { didSet { updateHighlight() } }
+
+        @objc func pointerMoved(_ pointer: UIHoverGestureRecognizer) {
+            let tracking = pointer.state == .began || pointer.state == .changed
+            pointerInside = tracking && bounds.contains(pointer.location(in: self))
+            updateHighlight()
+        }
+
+        private func updateHighlight() {
+            let opacity = isHighlighted ? 0.15 : (pointerInside ? 0.085 : 0)
+            backgroundColor = isEnabled ? UIColor.label.withAlphaComponent(opacity) : .clear
         }
     }
 }

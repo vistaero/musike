@@ -12,10 +12,13 @@ enum MacNowPlayingAction {
 }
 
 struct MacMiniPlayer: View {
+    static let height: CGFloat = 42
+
     @ObservedObject var engine: NativeEngine
     let track: Track
     let openPlayer: () -> Void
     let onAction: (MacNowPlayingAction) -> Void
+    var toolbarHovered: Bool? = nil
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var collection = MacMusicLibrary.shared
     @State private var hovering = false
@@ -32,11 +35,23 @@ struct MacMiniPlayer: View {
     private var subtitle: String {
         [track.artist, track.album ?? ""].filter { !$0.isEmpty }.joined(separator: " — ")
     }
-    private var showingTimes: Bool { hovering || seekPreview != nil }
+    private var pointerInside: Bool { toolbarHovered ?? hovering }
+    private var showingTimes: Bool { pointerInside || seekPreview != nil }
 
     var body: some View {
+        Group {
+            if toolbarHovered == nil {
+                card.onHover { hovering = $0 }
+            } else {
+                card
+            }
+        }
+        .onDisappear { seekTask?.cancel() }
+    }
+
+    private var card: some View {
         HStack(spacing: 0) {
-            Button(action: openPlayer) { MacArtwork(track: track, size: 42, cornerRadius: 0) }
+            Button(action: openPlayer) { MacArtwork(track: track, size: Self.height, cornerRadius: 0) }
                 .buttonStyle(.plain)
                 .accessibilityLabel(engine.text("Open player", "Abrir reproductor", "Abrir reprodutor"))
             ZStack(alignment: .bottom) {
@@ -45,13 +60,11 @@ struct MacMiniPlayer: View {
                 progress
             }
         }
-        .frame(height: 42)
+        .frame(height: Self.height)
         .background(Color.primary.opacity(colorScheme == .dark ? 0.13 : 0.035))
         .clipShape(RoundedRectangle(cornerRadius: 3))
         .overlay { RoundedRectangle(cornerRadius: 3).strokeBorder(.primary.opacity(0.09)).allowsHitTesting(false) }
         .contentShape(Rectangle())
-        .onHover { hovering = $0 }
-        .onDisappear { seekTask?.cancel() }
     }
 
     private var metadata: some View {
@@ -159,7 +172,7 @@ struct MacMiniPlayer: View {
             makeItems: menuItems
         )
         .frame(width: 16, height: 15)
-        .opacity(hovering ? 1 : 0)
+        .opacity(pointerInside ? 1 : 0)
     }
 
     private func menuItems() -> [UIMenuElement] {
