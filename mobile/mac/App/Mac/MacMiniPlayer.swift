@@ -59,6 +59,8 @@ struct MacMiniPlayer: View {
             ZStack(alignment: .bottom) {
                 metadata
                     .padding(.bottom, 3 + toolbarBottomInset)
+                progressIndicator
+                    .allowsHitTesting(false)
                 progress
                     .padding(.bottom, toolbarBottomInset)
             }
@@ -119,7 +121,6 @@ struct MacMiniPlayer: View {
         MacPlaybackTimeline(
             position: position,
             duration: duration,
-            showsHandle: showingTimes,
             accessibilityLabel: engine.text("Playback position", "Posición de reproducción", "Posição da reprodução"),
             onHover: { hoveringProgress = $0 },
             onPreview: { value in
@@ -129,6 +130,25 @@ struct MacMiniPlayer: View {
             onSeek: seek(to:)
         )
         .frame(height: 12)
+    }
+
+    private var progressIndicator: some View {
+        GeometryReader { geometry in
+            let end = duration > 0 ? geometry.size.width * position / duration : 0
+            ZStack(alignment: .bottomLeading) {
+                Rectangle().fill(Color.primary.opacity(0.14)).frame(height: 3)
+                Rectangle().fill(Color.primary.opacity(0.45)).frame(width: end, height: 3)
+                if showingTimes && duration > 0 {
+                    RoundedRectangle(cornerRadius: 0.75)
+                        .fill(Color.primary.opacity(0.65))
+                        .frame(width: 4, height: 7)
+                        .offset(x: min(max(0, end - 2), max(0, geometry.size.width - 4)))
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+        }
+        .frame(height: 7)
+        .accessibilityHidden(true)
     }
 
     private func seek(to position: Double) {
@@ -255,7 +275,6 @@ struct MacMiniPlayer: View {
 private struct MacPlaybackTimeline: UIViewRepresentable {
     let position: Double
     let duration: Double
-    let showsHandle: Bool
     let accessibilityLabel: String
     let onHover: (Bool) -> Void
     let onPreview: (Double?) -> Void
@@ -266,20 +285,17 @@ private struct MacPlaybackTimeline: UIViewRepresentable {
     func updateUIView(_ control: TimelineControl, context: Context) {
         control.position = position
         control.duration = duration
-        control.showsHandle = showsHandle
         control.accessibilityLabel = accessibilityLabel
         control.accessibilityValue = macTime(position) + " / " + macTime(duration)
         control.accessibilityTraits = duration > 0 ? .adjustable : [.adjustable, .notEnabled]
         control.onHover = onHover
         control.onPreview = onPreview
         control.onSeek = onSeek
-        control.setNeedsDisplay()
     }
 
     final class TimelineControl: UIControl {
         var position = 0.0
         var duration = 0.0
-        var showsHandle = false
         var onHover: ((Bool) -> Void)?
         var onPreview: ((Double?) -> Void)?
         var onSeek: ((Double) -> Void)?
@@ -297,22 +313,6 @@ private struct MacPlaybackTimeline: UIViewRepresentable {
         }
 
         required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-
-        override func draw(_ rect: CGRect) {
-            let bar = CGRect(x: 0, y: bounds.maxY - 3, width: bounds.width, height: 3)
-            let end = duration > 0 ? bounds.width * position / duration : 0
-            let ink = UIColor.label.resolvedColor(with: traitCollection)
-            ink.withAlphaComponent(0.14).setFill()
-            UIRectFill(bar)
-            ink.withAlphaComponent(0.45).setFill()
-            UIRectFill(CGRect(x: 0, y: bar.minY, width: end, height: bar.height))
-            if duration > 0 && (showsHandle || isTracking) {
-                let left = min(max(0, end - 2), max(0, bounds.width - 4))
-                let handle = CGRect(x: left, y: bounds.maxY - 7, width: 4, height: 7)
-                ink.withAlphaComponent(0.65).setFill()
-                UIBezierPath(roundedRect: handle, cornerRadius: 0.75).fill()
-            }
-        }
 
         override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
             guard duration > 0, bounds.width > 0 else { return false }
