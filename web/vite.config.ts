@@ -77,7 +77,7 @@ export default defineConfig(({ mode }) => {
       react(),
       tailwindcss(legacy ? { optimize: false } : undefined),
       ...(legacy ? [legacyWebKit()] : []),
-      ...(iosEngine ? [{
+      ...((iosEngine || legacy) ? [{
         name: "musike-ios-entry",
         enforce: "pre" as const,
         async resolveId(source: string, importer: string | undefined) {

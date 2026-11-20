@@ -10,6 +10,7 @@
 		002C0E5537C1D6EE1705A582 /* MusikeAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68AB86CD23F00F962E0DDCB3 /* MusikeAudio.swift */; };
 		230F185FA8BDBA2A32D40A23 /* MusikeYouTube.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EEF30E55286BB542B006B3D /* MusikeYouTube.swift */; };
 		238EB08E5AF14F7539FDB48B /* LegacyWebViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A581D9F8EBAB3BA2F1FA3E /* LegacyWebViewController.swift */; };
+		3D11A0B0C0FF4A00111A001 /* LegacyNativeUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D11A0B0C0FF4A00222A002 /* LegacyNativeUI.swift */; };
 		5BD58FABC8E85807162EC3AB /* PlaybackDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51B7D13A1F9A8300AA5C93CC /* PlaybackDiagnostics.swift */; };
 		6319FE2EF89A20EFF87CB029 /* MusikePlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660F5B07892105A282D8576F /* MusikePlayback.swift */; };
 		8DBEEB5195B60B1FBBCFBCCC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AC041513867C01B209C87E0 /* AppDelegate.swift */; };
@@ -19,6 +20,7 @@
 /* Begin PBXFileReference section */
 		0EEF30E55286BB542B006B3D /* MusikeYouTube.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MusikeYouTube.swift; sourceTree = "<group>"; };
 		32A581D9F8EBAB3BA2F1FA3E /* LegacyWebViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegacyWebViewController.swift; sourceTree = "<group>"; };
+		3D11A0B0C0FF4A00222A002 /* LegacyNativeUI.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegacyNativeUI.swift; sourceTree = "<group>"; };
 		4AC041513867C01B209C87E0 /* AppDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		51B7D13A1F9A8300AA5C93CC /* PlaybackDiagnostics.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PlaybackDiagnostics.swift; sourceTree = "<group>"; };
 		660F5B07892105A282D8576F /* MusikePlayback.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MusikePlayback.swift; sourceTree = "<group>"; };
@@ -90,9 +92,9 @@
 				4AC041513867C01B209C87E0 /* AppDelegate.swift */,
 				D5DBB6AC8D826C5FC807DB6B /* LegacyBridge.swift */,
 				32A581D9F8EBAB3BA2F1FA3E /* LegacyWebViewController.swift */,
+				3D11A0B0C0FF4A00222A002 /* LegacyNativeUI.swift */,
 				E85C5CAA333A7524788AD878 /* Info.plist */,
 			);
-			name = App;
 			path = App;
 			sourceTree = "<group>";
 		};
@@ -135,8 +137,6 @@
 				Base,
 			);
 			mainGroup = 019EFFFFE336AAA23E89C1B4;
-			minimizedProjectReferenceProxies = 0;
-			preferredProjectObjectVersion = 77;
 			productRefGroup = 7BA0933AB442E0273F497D8C /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -197,6 +197,7 @@
 				8DBEEB5195B60B1FBBCFBCCC /* AppDelegate.swift in Sources */,
 				C1855E02CCDE31BC75AAF93F /* LegacyBridge.swift in Sources */,
 				238EB08E5AF14F7539FDB48B /* LegacyWebViewController.swift in Sources */,
+				3D11A0B0C0FF4A00111A001 /* LegacyNativeUI.swift in Sources */,
 				002C0E5537C1D6EE1705A582 /* MusikeAudio.swift in Sources */,
 				6319FE2EF89A20EFF87CB029 /* MusikePlayback.swift in Sources */,
 				230F185FA8BDBA2A32D40A23 /* MusikeYouTube.swift in Sources */,

@@ -7,6 +7,8 @@ final class LegacyWebViewController: UIViewController, WKNavigationDelegate {
     private let youtube = MusikeYouTube()
     private let audio = MusikeAudio()
     private let bridge = LegacyBridge()
+    private let nativeEngine = LegacyNativeEngine()
+    private var nativeRoot: LegacyRootController?
     private let statusView = UIView()
     private let statusLabel = UILabel()
     private let retryButton = UIButton(type: .system)
@@ -16,7 +18,9 @@ final class LegacyWebViewController: UIViewController, WKNavigationDelegate {
     private var startupID = 0
     private var interfaceReady = false
 
-    override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
+    override var preferredStatusBarStyle: UIStatusBarStyle {
+        nativeEngine.appearance.theme == "light" ? .default : .lightContent
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -31,6 +35,7 @@ final class LegacyWebViewController: UIViewController, WKNavigationDelegate {
         controller.add(youtube, name: "musikeResolve")
         controller.add(audio, name: "musikeAudio")
         controller.add(bridge, name: "musikeLegacy")
+        controller.add(nativeEngine, name: "musikeUI")
         controller.add(PlaybackDiagnostics.shared, name: "musikeDiagnostics")
 
         webView = WKWebView(frame: .zero, configuration: configuration)
@@ -40,6 +45,7 @@ final class LegacyWebViewController: UIViewController, WKNavigationDelegate {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.navigationDelegate = self
         webView.translatesAutoresizingMaskIntoConstraints = false
+        webView.isHidden = true
         view.addSubview(webView)
         NSLayoutConstraint.activate([
             webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -53,6 +59,27 @@ final class LegacyWebViewController: UIViewController, WKNavigationDelegate {
         audio.attach(webView)
         bridge.webView = webView
         bridge.presenter = self
+        nativeEngine.webView = webView
+        nativeEngine.stateChanged = { [weak self] in
+            guard let self, self.nativeEngine.ready else { return }
+            self.startupTimeout?.cancel()
+            self.startupTimeout = nil
+            self.statusView.isHidden = true
+            self.interfaceReady = true
+            self.setNeedsStatusBarAppearanceUpdate()
+        }
+        let root = LegacyRootController(engine: nativeEngine)
+        nativeRoot = root
+        addChild(root)
+        root.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(root.view)
+        NSLayoutConstraint.activate([
+            root.view.topAnchor.constraint(equalTo: view.topAnchor),
+            root.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            root.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            root.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+        ])
+        root.didMove(toParent: self)
         configureStatusView()
         start()
     }
@@ -151,7 +178,7 @@ final class LegacyWebViewController: UIViewController, WKNavigationDelegate {
 
     private func waitForInterface(_ attempt: Int) {
         guard startupID == attempt else { return }
-        webView.evaluateJavaScript("document.querySelector('#root main') ? true : (window.__musikeStartupError || false)") { [weak self] result, error in
+        webView.evaluateJavaScript("window.musikeNative ? true : (window.__musikeStartupError || false)") { [weak self] result, error in
             guard let self, self.startupID == attempt else { return }
             if result as? Bool == true {
                 self.interfaceReady = true
