@@ -1,3 +1,4 @@
 /build/
 /App/public/
 /App/LegacyImages/
+/.xcode.env.local

@@ -8,50 +8,24 @@
 
 /* Begin PBXBuildFile section */
 		002C0E5537C1D6EE1705A582 /* MusikeAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68AB86CD23F00F962E0DDCB3 /* MusikeAudio.swift */; };
-		119331D8F2CBA0F616A7E220 /* Launch-736@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 437050DFFC006DB683EA90C9 /* Launch-736@3x.png */; };
 		230F185FA8BDBA2A32D40A23 /* MusikeYouTube.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EEF30E55286BB542B006B3D /* MusikeYouTube.swift */; };
 		238EB08E5AF14F7539FDB48B /* LegacyWebViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32A581D9F8EBAB3BA2F1FA3E /* LegacyWebViewController.swift */; };
-		2D66D6B84E3EFAE4EC997F3D /* public in Resources */ = {isa = PBXBuildFile; fileRef = 4A2F482F74109FF53BF31C12 /* public */; };
-		3030816575E20E3A99B0A608 /* Launch-896@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = E3981B8989B1D084C7E66E28 /* Launch-896@2x.png */; };
-		446E6C55310F55D77551A6AB /* MusikeIcon76.png in Resources */ = {isa = PBXBuildFile; fileRef = 4E5B5AC0633DE071FAA8379E /* MusikeIcon76.png */; };
-		4E309E7D19A195EDACA808F9 /* Launch-812@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = D39BC20401E725962495ED94 /* Launch-812@3x.png */; };
-		527498BC3D918168B423FEA1 /* MusikeIcon60@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = ACD01AD6F30AF1ECE803C950 /* MusikeIcon60@2x.png */; };
 		5BD58FABC8E85807162EC3AB /* PlaybackDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51B7D13A1F9A8300AA5C93CC /* PlaybackDiagnostics.swift */; };
 		6319FE2EF89A20EFF87CB029 /* MusikePlayback.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660F5B07892105A282D8576F /* MusikePlayback.swift */; };
-		719D3D9D71DD51D5D5C8C652 /* Launch-iPad@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 8B4E31BB7A103A7785137715 /* Launch-iPad@2x.png */; };
 		8DBEEB5195B60B1FBBCFBCCC /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AC041513867C01B209C87E0 /* AppDelegate.swift */; };
-		96AA9C23183FDC929BDD929C /* Launch-667@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 697CE4456BF10C0DABC5D8DF /* Launch-667@2x.png */; };
-		9A92AA24B339DD27495E98DF /* MusikeIcon76@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 19ED8D99BC7FB710C0117AD8 /* MusikeIcon76@2x.png */; };
-		B35EF7CD6BB69A23C17167D0 /* Launch-896@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 13EF9FDD2339D85AFA96687C /* Launch-896@3x.png */; };
 		C1855E02CCDE31BC75AAF93F /* LegacyBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5DBB6AC8D826C5FC807DB6B /* LegacyBridge.swift */; };
-		CFAD1FABDE5A81BB0A3E3374 /* MusikeIcon60@3x.png in Resources */ = {isa = PBXBuildFile; fileRef = 25B9064F7080F6F205E50CB0 /* MusikeIcon60@3x.png */; };
-		F582B8E950BFD86A602A8F32 /* Launch-iPad.png in Resources */ = {isa = PBXBuildFile; fileRef = FE06F1374A33C321EA078303 /* Launch-iPad.png */; };
-		F97780968650C6BD54AA7702 /* Launch-568@2x.png in Resources */ = {isa = PBXBuildFile; fileRef = 5DB769F9B571296DB2F3177F /* Launch-568@2x.png */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		0EEF30E55286BB542B006B3D /* MusikeYouTube.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MusikeYouTube.swift; sourceTree = "<group>"; };
-		13EF9FDD2339D85AFA96687C /* Launch-896@3x.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "Launch-896@3x.png"; sourceTree = "<group>"; };
-		19ED8D99BC7FB710C0117AD8 /* MusikeIcon76@2x.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "MusikeIcon76@2x.png"; sourceTree = "<group>"; };
-		25B9064F7080F6F205E50CB0 /* MusikeIcon60@3x.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "MusikeIcon60@3x.png"; sourceTree = "<group>"; };
 		32A581D9F8EBAB3BA2F1FA3E /* LegacyWebViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegacyWebViewController.swift; sourceTree = "<group>"; };
-		437050DFFC006DB683EA90C9 /* Launch-736@3x.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "Launch-736@3x.png"; sourceTree = "<group>"; };
-		4A2F482F74109FF53BF31C12 /* public */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		4AC041513867C01B209C87E0 /* AppDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		4E5B5AC0633DE071FAA8379E /* MusikeIcon76.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = MusikeIcon76.png; sourceTree = "<group>"; };
 		51B7D13A1F9A8300AA5C93CC /* PlaybackDiagnostics.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = PlaybackDiagnostics.swift; sourceTree = "<group>"; };
-		5DB769F9B571296DB2F3177F /* Launch-568@2x.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "Launch-568@2x.png"; sourceTree = "<group>"; };
 		660F5B07892105A282D8576F /* MusikePlayback.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MusikePlayback.swift; sourceTree = "<group>"; };
 		68AB86CD23F00F962E0DDCB3 /* MusikeAudio.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MusikeAudio.swift; sourceTree = "<group>"; };
-		697CE4456BF10C0DABC5D8DF /* Launch-667@2x.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "Launch-667@2x.png"; sourceTree = "<group>"; };
-		8B4E31BB7A103A7785137715 /* Launch-iPad@2x.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "Launch-iPad@2x.png"; sourceTree = "<group>"; };
-		ACD01AD6F30AF1ECE803C950 /* MusikeIcon60@2x.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "MusikeIcon60@2x.png"; sourceTree = "<group>"; };
-		D39BC20401E725962495ED94 /* Launch-812@3x.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "Launch-812@3x.png"; sourceTree = "<group>"; };
 		D5DBB6AC8D826C5FC807DB6B /* LegacyBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = LegacyBridge.swift; sourceTree = "<group>"; };
-		E3981B8989B1D084C7E66E28 /* Launch-896@2x.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "Launch-896@2x.png"; sourceTree = "<group>"; };
 		E85C5CAA333A7524788AD878 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		EEF8780DB537BF9F34752157 /* Musike.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Musike.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		FE06F1374A33C321EA078303 /* Launch-iPad.png */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = image.png; path = "Launch-iPad.png"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -98,26 +72,6 @@
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		AE3D41FC155B6F6E4EEF5141 /* Generated Images */ = {
-			isa = PBXGroup;
-			children = (
-				ACD01AD6F30AF1ECE803C950 /* MusikeIcon60@2x.png */,
-				25B9064F7080F6F205E50CB0 /* MusikeIcon60@3x.png */,
-				4E5B5AC0633DE071FAA8379E /* MusikeIcon76.png */,
-				19ED8D99BC7FB710C0117AD8 /* MusikeIcon76@2x.png */,
-				5DB769F9B571296DB2F3177F /* Launch-568@2x.png */,
-				697CE4456BF10C0DABC5D8DF /* Launch-667@2x.png */,
-				437050DFFC006DB683EA90C9 /* Launch-736@3x.png */,
-				D39BC20401E725962495ED94 /* Launch-812@3x.png */,
-				E3981B8989B1D084C7E66E28 /* Launch-896@2x.png */,
-				13EF9FDD2339D85AFA96687C /* Launch-896@3x.png */,
-				FE06F1374A33C321EA078303 /* Launch-iPad.png */,
-				8B4E31BB7A103A7785137715 /* Launch-iPad@2x.png */,
-			);
-			name = "Generated Images";
-			path = LegacyImages;
-			sourceTree = "<group>";
-		};
 		D10913570B87E8DC06AB10CE /* Shared iOS */ = {
 			isa = PBXGroup;
 			children = (
@@ -137,8 +91,6 @@
 				D5DBB6AC8D826C5FC807DB6B /* LegacyBridge.swift */,
 				32A581D9F8EBAB3BA2F1FA3E /* LegacyWebViewController.swift */,
 				E85C5CAA333A7524788AD878 /* Info.plist */,
-				4A2F482F74109FF53BF31C12 /* public */,
-				AE3D41FC155B6F6E4EEF5141 /* Generated Images */,
 			);
 			name = App;
 			path = App;
@@ -154,6 +106,7 @@
 				12C822F9C987AAB3EA64BA39 /* Sources */,
 				3306FF220CF2AE97252BD24B /* Frameworks */,
 				084E9DBA85CB8EDAE0D1DE8E /* Resources */,
+				87C2ED4A6EF54010BBBC6241 /* Build Musike Resources */,
 			);
 			buildRules = (
 			);
@@ -198,23 +151,43 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				2D66D6B84E3EFAE4EC997F3D /* public in Resources */,
-				527498BC3D918168B423FEA1 /* MusikeIcon60@2x.png in Resources */,
-				CFAD1FABDE5A81BB0A3E3374 /* MusikeIcon60@3x.png in Resources */,
-				446E6C55310F55D77551A6AB /* MusikeIcon76.png in Resources */,
-				9A92AA24B339DD27495E98DF /* MusikeIcon76@2x.png in Resources */,
-				F97780968650C6BD54AA7702 /* Launch-568@2x.png in Resources */,
-				96AA9C23183FDC929BDD929C /* Launch-667@2x.png in Resources */,
-				119331D8F2CBA0F616A7E220 /* Launch-736@3x.png in Resources */,
-				4E309E7D19A195EDACA808F9 /* Launch-812@3x.png in Resources */,
-				3030816575E20E3A99B0A608 /* Launch-896@2x.png in Resources */,
-				B35EF7CD6BB69A23C17167D0 /* Launch-896@3x.png in Resources */,
-				F582B8E950BFD86A602A8F32 /* Launch-iPad.png in Resources */,
-				719D3D9D71DD51D5D5C8C652 /* Launch-iPad@2x.png in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		87C2ED4A6EF54010BBBC6241 /* Build Musike Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/build-resources.sh",
+				"$(SRCROOT)/../scripts/build-legacy-ipa.mjs",
+			);
+			name = "Build Musike Resources";
+			outputPaths = (
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/public",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MusikeIcon60@2x.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MusikeIcon60@3x.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MusikeIcon76.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/MusikeIcon76@2x.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Launch-568@2x.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Launch-667@2x.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Launch-736@3x.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Launch-812@3x.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Launch-896@2x.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Launch-896@3x.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Launch-iPad.png",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Launch-iPad@2x.png",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh \"$SRCROOT/build-resources.sh\"";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		12C822F9C987AAB3EA64BA39 /* Sources */ = {
@@ -238,6 +211,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -293,6 +267,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";

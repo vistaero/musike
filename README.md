@@ -245,13 +245,13 @@ pnpm install
 DEVELOPER_DIR="/Applications/Xcode 15.app/Contents/Developer" pnpm --filter @musike/mobile ipa:legacy
 ```
 
-The command creates an unsigned `release/Musike-Setup-<version>-iOS12.ipa` for sideloading. To run from Xcode, prepare the bundled resources and open the project with the Xcode executable. Select your signing team in the Musike target before running on the device.
+The command creates an unsigned `release/Musike-Setup-<version>-iOS12.ipa` for sideloading. To run from Xcode, install the workspace dependencies once with `pnpm install` and open the project with the Xcode executable. The Musike target generates the web bundle, launch images and icons during the build. Select your signing team before running on a device.
 
 ```sh
-pnpm --filter @musike/mobile ipa:legacy --prepare
 "/Applications/Xcode 15.app/Contents/MacOS/Xcode" "$PWD/mobile/ios-legacy/MusikeLegacy.xcodeproj"
 ```
 
+If Xcode cannot find Node.js or pnpm, add their bin directories to `PATH` in `mobile/ios-legacy/.xcode.env.local`. The build phase reads this optional, local shell file.
 
 ### Option 6: Docker
 
