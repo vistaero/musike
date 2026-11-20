@@ -236,6 +236,23 @@ Like on Android, it works on its own (no computer or server), keeps playing with
 
 To build it yourself on a Mac with Xcode: `pnpm install && pnpm --filter @musike/mobile ipa` (creates `release/Musike-Setup-<version>-iOS.ipa`).
 
+#### iOS 12 build (Xcode 15.4)
+
+The `Xcode-15.4` branch includes a standalone arm64 app for devices such as the iPod touch running iOS 12.5.8. It uses Musike's mobile web interface with the shared iOS audio and lock-screen controls. Its library, downloads and preferences live in the legacy app's own container.
+
+```sh
+pnpm install
+DEVELOPER_DIR="/Applications/Xcode 15.app/Contents/Developer" pnpm --filter @musike/mobile ipa:legacy
+```
+
+The command creates an unsigned `release/Musike-Setup-<version>-iOS12.ipa` for sideloading. To run from Xcode, prepare the bundled resources and open the project with the Xcode executable. Select your signing team in the Musike target before running on the device.
+
+```sh
+pnpm --filter @musike/mobile ipa:legacy --prepare
+"/Applications/Xcode 15.app/Contents/MacOS/Xcode" "$PWD/mobile/ios-legacy/MusikeLegacy.xcodeproj"
+```
+
+
 ### Option 6: Docker
 
 For a home server, NAS or Raspberry Pi. The image (amd64 and arm64) includes yt-dlp, Deno and FFmpeg.

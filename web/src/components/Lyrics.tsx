@@ -193,7 +193,7 @@ export function LyricsView({ mode = "panel", className }: { mode?: "panel" | "pa
 
   useEffect(() => {
     if (pinned.current && active >= 0) scrollToLine(active);
-    if (page) {
+    if (page || typeof ResizeObserver === "undefined") {
       // A rotation or a window resize re-wraps the lines: recenter the sung line, without the animation.
       const recenter = () => {
         if (pinned.current && active >= 0) scrollToLine(active, false);

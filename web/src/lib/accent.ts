@@ -54,9 +54,9 @@ export function accentCss(hex: string): string {
   const ink = inkFor(hex);
   const darkText = readable(base, WHITE, DARK_SURFACE);
   const lightText = readable(base, BLACK, LIGHT_SURFACE);
-  const rgb = (c: Rgb) => c.map(Math.round).join(" ");
+  const rgb = (c: Rgb) => c.map(Math.round).join(",");
   return (
-    `html:root,html[data-theme="dark"]{--accent:${hex};--accent-ink:${ink};--accent-text:${toHex(darkText)};--accent-soft:rgb(${rgb(base)} / 0.13)}` +
-    `html[data-theme="light"]{--accent:${hex};--accent-ink:${ink};--accent-text:${toHex(lightText)};--accent-soft:rgb(${rgb(lightText)} / 0.12)}`
+    `html:root,html[data-theme="dark"]{--accent:${hex};--accent-ink:${ink};--accent-text:${toHex(darkText)};--legacy-accent-rgb:${rgb(base)};--accent-soft:rgba(${rgb(base)},0.13)}` +
+    `html[data-theme="light"]{--accent:${hex};--accent-ink:${ink};--accent-text:${toHex(lightText)};--accent-soft:rgba(${rgb(lightText)},0.12)}`
   );
 }

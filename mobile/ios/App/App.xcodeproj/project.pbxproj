@@ -23,6 +23,7 @@
 		AA0000000000000000000010 /* MusikeNativeUI.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000011 /* MusikeNativeUI.swift */; };
 		BB0000000000000000000001 /* BatchSearchModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000002 /* BatchSearchModel.swift */; };
 		BB0000000000000000000003 /* SearchUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000004 /* SearchUtilities.swift */; };
+		BB0000000000000000000005 /* PlaybackDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB0000000000000000000006 /* PlaybackDiagnostics.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -44,6 +45,7 @@
 		AA0000000000000000000011 /* MusikeNativeUI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusikeNativeUI.swift; sourceTree = "<group>"; };
 		BB0000000000000000000002 /* BatchSearchModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BatchSearchModel.swift; sourceTree = "<group>"; };
 		BB0000000000000000000004 /* SearchUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchUtilities.swift; sourceTree = "<group>"; };
+		BB0000000000000000000006 /* PlaybackDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaybackDiagnostics.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -86,6 +88,7 @@
 				AA0000000000000000000011 /* MusikeNativeUI.swift */,
 				BB0000000000000000000002 /* BatchSearchModel.swift */,
 				BB0000000000000000000004 /* SearchUtilities.swift */,
+				BB0000000000000000000006 /* PlaybackDiagnostics.swift */,
 				50379B222058CBB4000EE86E /* capacitor.config.json */,
 				504EC3071FED79650016851F /* AppDelegate.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -188,6 +191,7 @@
 				AA0000000000000000000010 /* MusikeNativeUI.swift in Sources */,
 				BB0000000000000000000001 /* BatchSearchModel.swift in Sources */,
 				BB0000000000000000000003 /* SearchUtilities.swift in Sources */,
+				BB0000000000000000000005 /* PlaybackDiagnostics.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

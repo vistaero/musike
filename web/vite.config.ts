@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
+import { legacyWebKit } from "./scripts/legacy-webkit";
 import { VitePWA } from "vite-plugin-pwa";
 
 const { version } = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")) as { version: string };
@@ -50,16 +51,32 @@ function nativeBackend(ios: boolean, mac: boolean): Plugin {
 
 export default defineConfig(({ mode }) => {
   const mac = mode === "mac";
-  const ios = mode === "ios" || mac;
+  const legacy = mode === "ios-legacy";
+  const ios = mode === "ios" || mac || legacy;
   const iosServer = mode === "ios-server";
-  const iosEngine = ios || iosServer;
+  const iosEngine = (ios && !legacy) || iosServer;
   const native = mode === "native" || ios;
   return {
-    define: { __APP_VERSION__: JSON.stringify(version) },
-    build: iosServer ? { outDir: "dist-ios-server", emptyOutDir: true } : mac ? { outDir: "dist-mac", emptyOutDir: true } : native ? { outDir: "dist-native", emptyOutDir: true } : undefined,
+    define: {
+      __APP_VERSION__: JSON.stringify(version),
+      "import.meta.env.MUSIKE_LEGACY_IOS": JSON.stringify(legacy),
+    },
+    ...(legacy ? {
+      base: "./",
+      resolve: { alias: [
+        { find: /^@capacitor\/(core|filesystem|share)$/, replacement: src("native", "ios-legacy", "bridge.ts") },
+      ] },
+    } : {}),
+    build: legacy ? {
+      outDir: "dist-ios-legacy", emptyOutDir: true, target: "safari12", cssTarget: "safari12",
+      modulePreload: false, cssCodeSplit: false,
+      // WebKit on iOS 12 rejects ES modules served through WKURLSchemeHandler.
+      rolldownOptions: { output: { format: "iife" } },
+    } : iosServer ? { outDir: "dist-ios-server", emptyOutDir: true } : mac ? { outDir: "dist-mac", emptyOutDir: true } : native ? { outDir: "dist-native", emptyOutDir: true } : undefined,
     plugins: [
       react(),
-      tailwindcss(),
+      tailwindcss(legacy ? { optimize: false } : undefined),
+      ...(legacy ? [legacyWebKit()] : []),
       ...(iosEngine ? [{
         name: "musike-ios-entry",
         enforce: "pre" as const,

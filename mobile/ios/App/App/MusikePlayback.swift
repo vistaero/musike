@@ -103,7 +103,7 @@ final class MusikePlayback: NSObject, WKScriptMessageHandler {
 
     private func publish(state: MPNowPlayingPlaybackState? = nil) {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nowPlaying
-        if let state { MPNowPlayingInfoCenter.default().playbackState = state }
+        if #available(iOS 13.0, *), let state { MPNowPlayingInfoCenter.default().playbackState = state }
     }
 
     private func number(_ value: Any?) -> Double {

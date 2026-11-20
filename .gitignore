@@ -5,6 +5,7 @@ dist-native/
 dist-mac/
 mobile/mac/App/Mac/public/
 dist-ios-server/
+dist-ios-legacy/
 dev-dist/
 desktop/dist/
 release/

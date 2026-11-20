@@ -8,6 +8,7 @@
     "build": "pnpm --filter @musike/web build:native && cap sync android",
     "apk": "pnpm run build && node scripts/build-apk.mjs",
     "ipa": "node scripts/build-ipa.mjs",
+    "ipa:legacy": "node scripts/build-legacy-ipa.mjs",
     "open": "cap open android",
     "open:ios": "cap open ios"
   },
