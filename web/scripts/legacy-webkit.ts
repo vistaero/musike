@@ -55,7 +55,8 @@ export function legacyWebKit(): Plugin {
     transformIndexHtml: {
       order: "post",
       handler: (html) => html
-        .replace(/<script type="module" crossorigin /, "<script defer ")
+        // The native controller evaluates the bundled classic script after the document loads.
+        .replace(/<script\b[^>]*src="\.\/assets\/legacy-app\.js"[^>]*><\/script>/, "")
         .replace('<link rel="stylesheet" crossorigin ', '<link rel="stylesheet" '),
     },
     generateBundle: {

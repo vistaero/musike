@@ -71,7 +71,7 @@ export default defineConfig(({ mode }) => {
       outDir: "dist-ios-legacy", emptyOutDir: true, target: "safari12", cssTarget: "safari12",
       modulePreload: false, cssCodeSplit: false,
       // WebKit on iOS 12 rejects ES modules served through WKURLSchemeHandler.
-      rolldownOptions: { output: { format: "iife" } },
+      rolldownOptions: { output: { format: "iife", entryFileNames: "assets/legacy-app.js" } },
     } : iosServer ? { outDir: "dist-ios-server", emptyOutDir: true } : mac ? { outDir: "dist-mac", emptyOutDir: true } : native ? { outDir: "dist-native", emptyOutDir: true } : undefined,
     plugins: [
       react(),

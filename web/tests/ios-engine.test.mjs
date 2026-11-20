@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { Script } from "node:vm";
 import { build } from "vite";
 
 for (const [mode, backend] of [["ios", "/src/native/api.ts"], ["ios-server", "/src/lib/api.ts"], ["mac", "/src/native/api.ts"]]) {
@@ -25,3 +26,17 @@ for (const [mode, backend] of [["ios", "/src/native/api.ts"], ["ios-server", "/s
     assert.deepEqual(oldUI, [], `the iOS engine should not include web screens or React: ${oldUI.join(", ")}`);
   });
 }
+
+
+test("the legacy iOS bundle exposes a classic entry script for the native startup controller", async () => {
+  const root = fileURLToPath(new URL("..", import.meta.url));
+  const bundle = await build({ root, mode: "ios-legacy", logLevel: "silent", build: { write: false } });
+  const outputs = (Array.isArray(bundle) ? bundle : [bundle]).flatMap((result) => result.output);
+  const script = outputs.find((item) => item.type === "chunk" && item.fileName === "assets/legacy-app.js");
+  const html = outputs.find((item) => item.type === "asset" && item.fileName === "index.html");
+  assert.ok(script, "Xcode's bundled JavaScript entry must exist at its stable path");
+  assert.ok(html);
+  assert.doesNotThrow(() => new Script(script.code), "WebKit evaluates a classic script, not a module");
+  assert.match(String(html.source), /<div id="root"><\/div>/);
+  assert.doesNotMatch(String(html.source), /<script[^>]+src=/, "the controller loads the app exactly once");
+});
