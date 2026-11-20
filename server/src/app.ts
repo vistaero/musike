@@ -198,6 +198,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
 
   app.post("/api/history", async (req) => ({ history: await library.pushHistory(library.sanitizeTrack(req.body)) }));
 
+  app.delete("/api/history", async () => ({ history: await library.clearHistory() }));
+
   app.post("/api/playlists", async (req) => {
     const body = (req.body ?? {}) as { name?: unknown; tracks?: unknown };
     const tracks = Array.isArray(body.tracks) ? body.tracks.slice(0, 500).map(library.sanitizeTrack) : [];

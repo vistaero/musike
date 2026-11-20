@@ -119,6 +119,7 @@ export function installIosUI() {
           case "removeAt": p.removeAt(args.index); break;
           case "clearUpcoming": p.clearUpcoming(); break;
           case "favorite": await l.toggleFavorite(args.track); break;
+          case "clearHistory": await l.clearHistory(); break;
           case "batchAddFavorites": await api.addFavorites(args.tracks as Track[]); await l.load(); break;
           case "batchAddToPlaylist": await api.addToPlaylist(args.id, args.tracks as Track[]); await l.load(); break;
           case "batchCreatePlaylist": result = await api.createPlaylist(args.name, args.tracks as Track[]); await l.load(); break;

@@ -130,6 +130,7 @@ export interface MusikeApi {
   addFavorites(tracks: Track[]): Promise<{ favorites: Track[] }>;
   removeFavorite(id: string): Promise<{ favorites: Track[] }>;
   pushHistory(t: Track): Promise<{ history: Track[] }>;
+  clearHistory(): Promise<{ history: Track[] }>;
   createPlaylist(name: string, tracks?: Track[]): Promise<Playlist>;
   renamePlaylist(id: string, name: string): Promise<Playlist>;
   deletePlaylist(id: string): Promise<void>;

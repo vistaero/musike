@@ -352,8 +352,29 @@ struct SettingsScreen: View {
                         }
                     } label: { Label(engine.text("Share playback log", "Compartir registro de reproducción", "Compartilhar registro de reprodução"), systemImage: "square.and.arrow.up") }
                     Button(role: .destructive) {
-                        PlaybackDiagnostics.shared.clear { notice = engine.text("Playback log cleared.", "Registro de reproducción borrado.", "Registro de reprodução apagado.") }
-                    } label: { Label(engine.text("Clear playback log", "Borrar registro de reproducción", "Apagar registro de reprodução"), systemImage: "trash") }
+                        engine.call("clearHistory") { historyResult in
+                            if case .failure(let error) = historyResult {
+                                engine.error = error.localizedDescription
+                                return
+                            }
+                            PlaybackDiagnostics.shared.clear { logResult in
+                                switch logResult {
+                                case .success:
+                                    notice = engine.text(
+                                        "Playback log and history cleared.",
+                                        "Registro e historial de reproducción borrados.",
+                                        "Registro e histórico de reprodução apagados.")
+                                case .failure(let error):
+                                    engine.error = error.localizedDescription
+                                }
+                            }
+                        }
+                    } label: { Label(
+                        engine.text(
+                            "Clear playback log and history",
+                            "Borrar registro e historial de reproducción",
+                            "Apagar registro e histórico de reprodução"),
+                        systemImage: "trash") }
                 }
                 Section(header: Text(engine.text("Your data", "Tus datos", "Seus dados")), footer: Text(engine.text("Move your library between Musike installations.", "Lleva tu biblioteca a otra instalación de Musike.", "Transfira sua biblioteca para outra instalação do Musike."))) {
                     #if targetEnvironment(macCatalyst)

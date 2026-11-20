@@ -105,6 +105,7 @@ export const api: MusikeApi = {
   addFavorites: (list) => call(async () => ({ favorites: await library.addFavorites(tracks(list)) })),
   removeFavorite: (id) => call(async () => ({ favorites: await library.removeFavorite(id) })),
   pushHistory: (t) => call(async () => ({ history: await library.pushHistory(library.sanitizeTrack(t)) })),
+  clearHistory: () => call(async () => ({ history: await library.clearHistory() })),
   createPlaylist: (name, list = []) => call(() => library.createPlaylist(name, tracks(list))),
   renamePlaylist: (id, name) => call(() => library.renamePlaylist(id, name)),
   deletePlaylist: (id) => call(() => library.deletePlaylist(id)),

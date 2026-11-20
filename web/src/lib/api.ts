@@ -77,6 +77,7 @@ export const api: MusikeApi = {
   addFavorites: (tracks: Track[]) => request<{ favorites: Track[] }>("/api/favorites", { method: "POST", json: { tracks } }),
   removeFavorite: (id: string) => request<{ favorites: Track[] }>(`/api/favorites/${id}`, { method: "DELETE" }),
   pushHistory: (t: Track) => request<{ history: Track[] }>("/api/history", { method: "POST", json: t }),
+  clearHistory: () => request<{ history: Track[] }>("/api/history", { method: "DELETE" }),
   createPlaylist: (name: string, tracks: Track[] = []) =>
     request<Playlist>("/api/playlists", { method: "POST", json: { name, tracks } }),
   renamePlaylist: (id: string, name: string) => request<Playlist>(`/api/playlists/${id}`, { method: "PATCH", json: { name } }),

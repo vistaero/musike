@@ -101,6 +101,13 @@ export async function pushHistory(track: Track): Promise<Track[]> {
   return lib.history;
 }
 
+export async function clearHistory(): Promise<Track[]> {
+  const lib = await load();
+  lib.history = [];
+  await persist();
+  return lib.history;
+}
+
 export async function createPlaylist(name: string, tracks: Track[] = []): Promise<Playlist> {
   const lib = await load();
   const clean = name.trim().slice(0, 80);

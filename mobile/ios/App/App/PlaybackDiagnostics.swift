@@ -50,7 +50,8 @@ final class PlaybackDiagnostics: NSObject, WKScriptMessageHandler {
     }
     private func persist(_ entries: [String]) throws {
         try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try (entries.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+        let contents = entries.isEmpty ? "" : entries.joined(separator: "\n") + "\n"
+        try contents.write(to: file, atomically: true, encoding: .utf8)
     }
     func record(_ message: String) {
         queue.async {
@@ -77,13 +78,15 @@ final class PlaybackDiagnostics: NSObject, WKScriptMessageHandler {
               event.range(of: "^[a-z0-9_.-]+$", options: .regularExpression) != nil else { return }
         record("web.\(event)")
     }
-    func clear(completion: @escaping () -> Void) {
+    func clear(completion: @escaping (Result<Void, Error>) -> Void) {
         queue.async {
-            self.lines = []
-            try? self.persist([])
-            self.record("diagnostics.cleared")
-            self.record(Self.describe(self.pathMonitor.currentPath))
-            DispatchQueue.main.async(execute: completion)
+            do {
+                try self.persist([])
+                self.lines = []
+                DispatchQueue.main.async { completion(.success(())) }
+            } catch {
+                DispatchQueue.main.async { completion(.failure(error)) }
+            }
         }
     }
     func export(completion: @escaping (Result<URL, Error>) -> Void) {

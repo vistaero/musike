@@ -62,6 +62,7 @@ struct LegacySnapshot: Decodable {
 }
 
 final class LegacyNativeEngine: NSObject, WKScriptMessageHandler {
+    private static let themePreferenceKey = "app.musike.legacy.theme"
     weak var webView: WKWebView?
     private(set) var player = LegacyPlayer()
     private(set) var library = LegacyLibrary()
@@ -69,6 +70,7 @@ final class LegacyNativeEngine: NSObject, WKScriptMessageHandler {
     private(set) var language = "en"
     private(set) var engineSettings = false
     private(set) var ready = false
+    private(set) var hasSnapshot = false
     var stateChanged: (() -> Void)? {
         didSet {
             if let stateChanged = stateChanged { stateObservers.append(stateChanged) }
@@ -77,6 +79,14 @@ final class LegacyNativeEngine: NSObject, WKScriptMessageHandler {
     private var stateObservers: [() -> Void] = []
     private var callbacks: [Int: (Result<Any, Error>) -> Void] = [:]
     private var nextID = 0
+
+    override init() {
+        super.init()
+        if let theme = UserDefaults.standard.string(forKey: Self.themePreferenceKey),
+           theme == "light" || theme == "dark" {
+            appearance.theme = theme
+        }
+    }
 
     var accent: UIColor { LegacyNativeEngine.color(hex: appearance.accent) }
 
@@ -88,7 +98,9 @@ final class LegacyNativeEngine: NSObject, WKScriptMessageHandler {
         guard let body = message.body as? [String: Any],
               let type = body["type"] as? String else { return }
 
-        if type == "ready" {
+        if type == "theme", let theme = body["value"] as? String {
+            setThemeFromPage(theme)
+        } else if type == "ready" {
             ready = true
             PlaybackDiagnostics.shared.record("native.legacy.ready")
             DispatchQueue.main.async { self.notifyStateChanged() }
@@ -98,8 +110,10 @@ final class LegacyNativeEngine: NSObject, WKScriptMessageHandler {
             player = snapshot.player
             library = snapshot.library
             appearance = snapshot.appearance
+            rememberTheme(snapshot.appearance.theme)
             language = snapshot.lang
             engineSettings = snapshot.engineSettings ?? false
+            hasSnapshot = true
             DispatchQueue.main.async { self.notifyStateChanged() }
         } else if type == "response", let id = body["id"] as? Int,
                   let callback = callbacks.removeValue(forKey: id) {
@@ -151,6 +165,24 @@ final class LegacyNativeEngine: NSObject, WKScriptMessageHandler {
 
     private func notifyStateChanged() {
         stateObservers.forEach { $0() }
+    }
+
+    func setThemeFromPage(_ theme: String) {
+        guard theme == "light" || theme == "dark" else { return }
+        let changed = appearance.theme != theme
+        appearance.theme = theme
+        rememberTheme(theme)
+        if changed { DispatchQueue.main.async { self.notifyStateChanged() } }
+    }
+
+    private func rememberTheme(_ theme: String) {
+        guard theme == "light" || theme == "dark" else { return }
+        UserDefaults.standard.set(theme, forKey: Self.themePreferenceKey)
+    }
+
+    func beginStartup() {
+        ready = false
+        hasSnapshot = false
     }
 
     func play(_ tracks: [LegacyTrack], at index: Int = 0) {
@@ -647,7 +679,7 @@ private extension LegacyRootController {
     func refreshIfNeeded() { refresh() }
 }
 
-final class LegacySearchController: UITableViewController, UISearchResultsUpdating {
+final class LegacySearchController: UITableViewController, UISearchResultsUpdating, UISearchControllerDelegate {
     private let engine: LegacyNativeEngine
     private var tracks: [LegacyTrack] = []
     private var timer: Timer?
@@ -667,6 +699,7 @@ final class LegacySearchController: UITableViewController, UISearchResultsUpdati
         tableView.separatorStyle = .none
         tableView.register(LegacyTrackCell.self, forCellReuseIdentifier: LegacyTrackCell.reuseID)
         search.searchResultsUpdater = self
+        search.delegate = self
         search.obscuresBackgroundDuringPresentation = false
         search.searchBar.tintColor = engine.accent
         search.searchBar.placeholder = engine.text("Artists, songs or albums",
@@ -688,7 +721,25 @@ final class LegacySearchController: UITableViewController, UISearchResultsUpdati
         search.searchBar.placeholder = engine.text("Artists, songs or albums",
                                                    "Artistas, canciones o álbumes",
                                                    "Artistas, músicas ou álbuns")
+        updateCancelButtonTitle()
         LegacyTheme.apply(to: search.searchBar, engine: engine)
+    }
+
+    func didPresentSearchController(_ searchController: UISearchController) {
+        DispatchQueue.main.async { [weak self] in self?.updateCancelButtonTitle() }
+    }
+
+    private func updateCancelButtonTitle() {
+        let title = engine.text("Cancel", "Cancelar", "Cancelar")
+        func updateButtons(in view: UIView) {
+            if let button = view as? UIButton,
+               let currentTitle = button.title(for: .normal),
+               !currentTitle.isEmpty {
+                button.setTitle(title, for: .normal)
+            }
+            view.subviews.forEach(updateButtons)
+        }
+        updateButtons(in: search.searchBar)
     }
 
     func updateSearchResults(for searchController: UISearchController) {
@@ -982,6 +1033,7 @@ final class LegacySettingsController: UITableViewController, UIDocumentPickerDel
         case .appearance where indexPath.row == 1: return 58
         case .appearance, .language: return 64
         case .playbackEngine where indexPath.row == 1: return 64
+        case .diagnostics where indexPath.row == 1: return 64
         default: return 54
         }
     }
@@ -1067,6 +1119,12 @@ final class LegacySettingsController: UITableViewController, UIDocumentPickerDel
             cell.textLabel?.text = indexPath.row == 0
                 ? engine.text("Share playback log", "Compartir registro de reproducción", "Compartilhar registro de reprodução")
                 : engine.text("Clear playback log", "Borrar registro de reproducción", "Apagar registro de reprodução")
+            if indexPath.row == 1 {
+                cell.detailTextLabel?.text = engine.text(
+                    "Also clears Recently played.",
+                    "También borra Escuchado recientemente.",
+                    "Também limpa Tocadas recentemente.")
+            }
             cell.textLabel?.textColor = indexPath.row == 0 ? engine.accent : UIColor(red: 0.9, green: 0.25, blue: 0.25, alpha: 1)
             cell.selectionStyle = .default
         case .data:
@@ -1350,15 +1408,36 @@ final class LegacySettingsController: UITableViewController, UIDocumentPickerDel
     }
 
     private func confirmClearDiagnostics() {
-        let alert = UIAlertController(title: engine.text("Clear playback log?", "¿Borrar el registro?", "Apagar registro?"),
+        let alert = UIAlertController(title: engine.text(
+            "Clear playback log and Recently played?",
+            "¿Borrar el registro y Escuchado recientemente?",
+            "Limpar o registro e Tocadas recentemente?"),
                                       message: nil, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: engine.text("Cancel", "Cancelar", "Cancelar"), style: .cancel))
         alert.addAction(UIAlertAction(title: engine.text("Clear", "Borrar", "Apagar"), style: .destructive) { _ in
-            PlaybackDiagnostics.shared.clear { [weak self] in
-                let notice = UIAlertController(title: self?.engine.text("Playback log cleared.", "Registro borrado.", "Registro apagado."),
-                                               message: nil, preferredStyle: .alert)
-                notice.addAction(UIAlertAction(title: "OK", style: .default))
-                self?.present(notice, animated: true)
+            self.engine.call("clearHistory") { [weak self] historyResult in
+                guard let self = self else { return }
+                if case .failure(let error) = historyResult {
+                    self.showError(error)
+                    return
+                }
+                PlaybackDiagnostics.shared.clear { [weak self] logResult in
+                    guard let self = self else { return }
+                    switch logResult {
+                    case .success:
+                        let notice = UIAlertController(
+                            title: self.engine.text(
+                                "Playback log and history cleared.",
+                                "Registro e historial de reproducción borrados.",
+                                "Registro e histórico de reprodução apagados."),
+                            message: nil,
+                            preferredStyle: .alert)
+                        notice.addAction(UIAlertAction(title: "OK", style: .default))
+                        self.present(notice, animated: true)
+                    case .failure(let error):
+                        self.showError(error)
+                    }
+                }
             }
         })
         present(alert, animated: true)

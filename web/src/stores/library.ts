@@ -11,6 +11,7 @@ interface LibraryState extends Library {
   toggleFavorite: (t: Track) => Promise<void>;
   addFavorites: (tracks: Track[]) => Promise<void>;
   recordPlay: (t: Track) => void;
+  clearHistory: () => Promise<void>;
   createPlaylist: (name: string, tracks?: Track[]) => Promise<Playlist | null>;
   renamePlaylist: (id: string, name: string) => Promise<void>;
   deletePlaylist: (id: string) => Promise<void>;
@@ -71,6 +72,18 @@ export const useLibrary = create<LibraryState>((set, get) => ({
   recordPlay: (track) => {
     set((s) => ({ history: [track, ...s.history.filter((t) => t.id !== track.id)].slice(0, 60) }));
     api.pushHistory(track).catch(() => {});
+  },
+
+  clearHistory: async () => {
+    const previous = get().history;
+    set({ history: [] });
+    try {
+      const { history } = await api.clearHistory();
+      set({ history });
+    } catch (error) {
+      set({ history: previous });
+      throw error;
+    }
   },
 
   createPlaylist: async (name, tracks = []) => {
