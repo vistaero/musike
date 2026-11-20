@@ -33,7 +33,12 @@ class Buffered {
   }
 }
 
-class NativeAudio extends EventTarget {
+class NativeAudio {
+  // Older WebKit supports DOM event targets, but its EventTarget interface is not constructible.
+  private readonly events = typeof document === "undefined" ? new EventTarget() : document.createDocumentFragment();
+  readonly addEventListener = this.events.addEventListener.bind(this.events);
+  readonly removeEventListener = this.events.removeEventListener.bind(this.events);
+  readonly dispatchEvent = this.events.dispatchEvent.bind(this.events);
   // The player sets these; the native side only needs to know about them.
   private _volume = 1;
   private _muted = false;
@@ -53,7 +58,6 @@ class NativeAudio extends EventTarget {
   preload = "auto";
 
   constructor(private bridge: Bridge) {
-    super();
     const host = globalThis as {
       __musikeAudioEvent?: (event: string, data: NativePayload) => void;
       __musikeAudioEl?: NativeAudio;
