@@ -6,6 +6,12 @@ dev-dist/
 desktop/dist/
 release/
 desktop/out/
+.build-local/
+desktop-winui/**/bin/
+desktop-winui/**/obj/
+desktop-winui/Musike.WinUI/Backend/
+.vs/
+*.user
 
 # Local data (library, HD video cache)
 server/data/

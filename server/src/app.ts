@@ -32,6 +32,10 @@ export interface StartOptions {
   host?: string;
   /** Try the next ports when the preferred one is taken (the desktop app does this). */
   portFallback?: boolean;
+  /** Private desktop sidecars require a per-launch capability; public web servers keep their existing API. */
+  requestToken?: string;
+  /** Native playback diagnostics without exposing the URL's credentials. */
+  onStreamResponse?: (response: { path: string; method: string; range: string | null; status: number; contentType: string }) => void;
 }
 
 export interface RunningServer {
@@ -45,6 +49,24 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   library.useLibraryStorage(fileStorage());
   const found = await refreshTools();
   const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "warn" } });
+
+  if (opts.onStreamResponse) {
+    app.addHook("onResponse", async (req, reply) => {
+      const path = req.url.split("?")[0]!;
+      if (!path.startsWith("/api/stream/")) return;
+      opts.onStreamResponse!({ path, method: req.method, range: typeof req.headers.range === "string" ? req.headers.range : null,
+        status: reply.statusCode, contentType: String(reply.getHeader("content-type") ?? "") });
+    });
+  }
+
+  if (opts.requestToken) {
+    app.addHook("onRequest", async (req, reply) => {
+      // Media Foundation cannot attach custom headers to MediaSource URIs. Only stream routes accept a query token.
+      const stream = /^\/api\/stream\/[A-Za-z0-9_-]{11}\/(audio|video)(\?|$)/.test(req.url);
+      const token = req.headers["x-musike-token"] ?? (stream ? (req.query as { token?: string }).token : undefined);
+      if (token !== opts.requestToken) return reply.code(401).send({ error: "Unauthorized" });
+    });
+  }
 
   app.setErrorHandler((err, req, reply) => {
     const e = err as Error & { statusCode?: number };
@@ -65,6 +87,14 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
     const { channel } = (req.body ?? {}) as { channel?: string };
     return presentJob(startJob((channel === "nightly" ? "nightly" : "stable") satisfies Channel), langOf(req));
   });
+
+  if (opts.requestToken) {
+    app.post("/api/native/tools", async (req) => {
+      const { ensureComponent } = await import("./bootstrap.js");
+      await Promise.all([ensureComponent("yt-dlp"), ensureComponent("deno"), ensureComponent("ffmpeg")]);
+      return systemInfo(langOf(req));
+    });
+  }
 
   // Discovery
 
@@ -243,7 +273,8 @@ export async function startServer(opts: StartOptions = {}): Promise<RunningServe
   await app.listen({ port, host });
 
   pruneCache().catch(() => {});
-  return { port, tools: found, close: () => app.close() };
+  const address = app.server.address();
+  return { port: typeof address === "object" && address ? address.port : port, tools: found, close: () => app.close() };
 }
 
 /** First free port from `start` (up to 10 tries), so a second copy or a dev server doesn't block launch. */

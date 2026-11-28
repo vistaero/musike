@@ -1,0 +1,40 @@
+name: WinUI 3
+
+on:
+  push:
+    paths: ["desktop-winui/**", "server/**", ".github/workflows/winui.yml", "pnpm-lock.yaml", "package.json"]
+  pull_request:
+    paths: ["desktop-winui/**", "server/**", ".github/workflows/winui.yml", "pnpm-lock.yaml", "package.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm --filter @musike/server install --frozen-lockfile
+      - name: Check shared server types
+        run: pnpm --filter @musike/server typecheck
+      - name: Core and lifecycle tests
+        run: pnpm winui:test
+      - name: Existing stream and lyrics regressions and native HTTP integration
+        working-directory: server
+        run: node --test tests/*.test.mjs
+      - name: Build self-contained native application
+        run: pnpm winui:publish
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Musike-WinUI-Windows-x64
+          path: release/Musike-WinUI-Windows-x64.zip
+          if-no-files-found: error

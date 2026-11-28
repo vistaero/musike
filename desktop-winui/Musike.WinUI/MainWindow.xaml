@@ -1,0 +1,222 @@
+<Window x:Class="Musike.WinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:core="using:Musike.Core"
+    xmlns:converters="using:Musike.WinUI.Converters"
+    Title="Musike · WinUI">
+    <!-- A transparent root lets the window's Mica backdrop show through. -->
+    <Grid x:Name="Root" Background="Transparent">
+        <Grid.RowDefinitions><RowDefinition Height="40"/><RowDefinition Height="*"/><RowDefinition Height="120"/></Grid.RowDefinitions>
+        <Grid x:Name="TitleBar" Padding="16,0,140,0">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <FontIcon Glyph="&#xE8D6;" FontSize="16" Foreground="{ThemeResource SystemControlHighlightAccentBrush}"/>
+                <TextBlock Text="Musike" FontWeight="SemiBold"/>
+                <TextBlock Text="WINUI 3" FontSize="10" Opacity="0.5" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+        <NavigationView x:Name="Navigation" Grid.Row="1" Background="Transparent" IsBackButtonVisible="Collapsed"
+            PaneDisplayMode="Auto" OpenPaneLength="210" CompactModeThresholdWidth="800" ExpandedModeThresholdWidth="1080"
+            IsPaneOpen="True" SelectionChanged="Navigation_SelectionChanged">
+            <NavigationView.Resources>
+                <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent"/>
+            </NavigationView.Resources>
+            <NavigationView.MenuItems>
+                <NavigationViewItem Content="Inicio" Tag="home" Icon="Home"/>
+                <NavigationViewItem Content="Buscar" Tag="search" Icon="Find"/>
+                <NavigationViewItem Content="Explorar géneros" Tag="genres" Icon="World"/>
+                <NavigationViewItemSeparator/>
+                <NavigationViewItemHeader Content="Tu música"/>
+                <NavigationViewItem Content="Favoritos" Tag="favorites" Icon="Like"/>
+                <NavigationViewItem Content="Escuchado recientemente" Tag="history"><NavigationViewItem.Icon><FontIcon Glyph="&#xE823;"/></NavigationViewItem.Icon></NavigationViewItem>
+                <NavigationViewItem Content="Listas de reproducción" Tag="playlists" Icon="MusicInfo"/>
+                <NavigationViewItem Content="Cola" Tag="queue" Icon="List"/>
+                <NavigationViewItemSeparator/>
+                <NavigationViewItem Content="Reproduciendo" Tag="playing" Icon="Play"/>
+                <NavigationViewItem Content="Letras" Tag="lyrics" Icon="Document"/>
+                <NavigationViewItem Content="Buscar una lista" Tag="batch" Icon="Paste"/>
+            </NavigationView.MenuItems>
+            <Grid Padding="24,12,24,16" RowSpacing="12">
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <StackPanel Spacing="10">
+                    <Grid ColumnSpacing="12">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                        <AutoSuggestBox x:Name="SearchBox" PlaceholderText="Canciones, artistas, álbumes…" QueryIcon="Find"
+                            QuerySubmitted="Search_QuerySubmitted" TextChanged="Search_TextChanged" AutomationProperties.Name="Buscar música"/>
+                        <ComboBox x:Name="SearchKind" Grid.Column="1" SelectedIndex="0" MinWidth="130" AutomationProperties.Name="Tipo de búsqueda">
+                            <ComboBoxItem Content="Canciones"/><ComboBoxItem Content="Vídeos"/><ComboBoxItem Content="Álbumes"/>
+                        </ComboBox>
+                    </Grid>
+                    <InfoBar x:Name="Notice" IsOpen="False" IsClosable="True" Severity="Error"/>
+                    <ProgressBar x:Name="Busy" IsIndeterminate="True" Visibility="Collapsed"/>
+                </StackPanel>
+                <StackPanel Grid.Row="1" Spacing="4">
+                    <TextBlock x:Name="PageTitle" Text="Tu música, sin interrupciones." FontSize="30" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                    <TextBlock x:Name="PageSubtitle" Text="Preparando el motor local…" Opacity="0.65" TextWrapping="Wrap"/>
+                </StackPanel>
+                <Grid Grid.Row="2">
+                    <Grid x:Name="CollectionPanel">
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                        <CommandBar x:Name="Actions" DefaultLabelPosition="Right" HorizontalContentAlignment="Left" Background="Transparent">
+                            <AppBarButton Label="Reproducir" Icon="Play" Click="Play_Click"/>
+                            <AppBarButton Label="Añadir a la cola" Icon="Add" Click="Enqueue_Click"/>
+                            <AppBarButton Label="Favoritos" Icon="Like" Click="FavoriteSelection_Click"/>
+                            <AppBarButton Label="Añadir a lista" Icon="MusicInfo" Click="AddToPlaylist_Click"/>
+                            <AppBarButton x:Name="NewPlaylistButton" Label="Nueva lista" Icon="NewFolder" Click="NewPlaylist_Click"/>
+                            <CommandBar.SecondaryCommands>
+                                <AppBarButton x:Name="RenameButton" Label="Renombrar lista" Click="RenamePlaylist_Click"/>
+                                <AppBarButton x:Name="DeleteButton" Label="Eliminar lista" Click="DeletePlaylist_Click"/>
+                                <AppBarButton x:Name="RemoveButton" Label="Quitar selección" Click="RemoveSelection_Click"/>
+                                <AppBarButton Label="Vaciar próximas" Click="ClearUpcoming_Click"/>
+                            </CommandBar.SecondaryCommands>
+                        </CommandBar>
+                        <Pivot x:Name="Results" Grid.Row="1">
+                            <PivotItem x:Name="TracksTab" Header="Canciones">
+                                <Grid>
+                                    <ListView x:Name="Tracks" SelectionMode="Extended" IsItemClickEnabled="False" DoubleTapped="Tracks_DoubleTapped" RightTapped="Tracks_RightTapped">
+                                        <ListView.ItemTemplate>
+                                            <DataTemplate x:DataType="core:Track">
+                                                <Grid Padding="4,6" ColumnSpacing="14">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="44"/><ColumnDefinition Width="*"/><ColumnDefinition Width="160"/><ColumnDefinition Width="52"/></Grid.ColumnDefinitions>
+                                                    <Border CornerRadius="5" Width="44" Height="44" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                                        <Image Source="{x:Bind converters:ArtworkSource.FromUri(Thumb)}" Stretch="UniformToFill"/>
+                                                    </Border>
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <TextBlock Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{x:Bind Album}" TextTrimming="CharacterEllipsis" FontSize="12" Opacity="0.5"/>
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="2" Text="{x:Bind Artist}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.7"/>
+                                                    <TextBlock Grid.Column="3" Text="{x:Bind DurationText}" VerticalAlignment="Center" HorizontalAlignment="Right" Opacity="0.5"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListView.ItemTemplate>
+                                        <ListView.ContextFlyout>
+                                            <MenuFlyout>
+                                                <MenuFlyoutItem Text="Reproducir" Icon="Play" Click="Play_Click"/>
+                                                <MenuFlyoutItem Text="Reproducir después" Click="PlayNext_Click"/>
+                                                <MenuFlyoutItem Text="Añadir a la cola" Click="Enqueue_Click"/>
+                                                <MenuFlyoutItem Text="Añadir / quitar favorito" Click="ToggleFavoriteSelection_Click"/>
+                                                <MenuFlyoutItem Text="Añadir a lista" Click="AddToPlaylist_Click"/>
+                                                <MenuFlyoutSeparator/>
+                                                <MenuFlyoutItem Text="Radio de esta canción" Click="Radio_Click"/>
+                                                <MenuFlyoutItem Text="Buscar al artista" Click="ArtistSearch_Click"/>
+                                                <MenuFlyoutItem Text="Abrir en YouTube" Click="OpenYouTube_Click"/>
+                                                <MenuFlyoutItem Text="Quitar de esta colección" Click="RemoveSelection_Click"/>
+                                            </MenuFlyout>
+                                        </ListView.ContextFlyout>
+                                    </ListView>
+                                    <TextBlock x:Name="EmptyText" Text="Busca música para empezar. Tus listas aparecerán aquí." TextWrapping="Wrap" HorizontalAlignment="Center" VerticalAlignment="Center" Opacity="0.65" IsHitTestVisible="False"/>
+                                </Grid>
+                            </PivotItem>
+                            <PivotItem x:Name="CardsTab" Header="Explorar">
+                                <GridView x:Name="Cards" IsItemClickEnabled="True" SelectionMode="None" ItemClick="Cards_ItemClick">
+                                    <GridView.ItemTemplate>
+                                        <DataTemplate x:DataType="core:BrowseCard">
+                                            <StackPanel Width="150" Margin="4,4,8,16" Spacing="6">
+                                                <Border Width="150" Height="150" CornerRadius="10" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                                                    <Grid>
+                                                        <FontIcon Glyph="&#xE8D6;" FontSize="40" Opacity="0.2"/>
+                                                        <Image Source="{x:Bind converters:ArtworkSource.FromUri(Artwork)}" Stretch="UniformToFill"/>
+                                                    </Grid>
+                                                </Border>
+                                                <TextBlock Text="{x:Bind Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{x:Bind Caption}" FontSize="12" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </GridView.ItemTemplate>
+                                </GridView>
+                            </PivotItem>
+                        </Pivot>
+                    </Grid>
+                    <Grid x:Name="NowPlayingPanel" Visibility="Collapsed" RowSpacing="16">
+                        <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                        <Border Background="Black" CornerRadius="12">
+                            <Grid>
+                                <Image x:Name="LargeArtwork" Stretch="Uniform"/>
+                                <MediaPlayerElement x:Name="VideoSurface" AreTransportControlsEnabled="False" Visibility="Collapsed"/>
+                            </Grid>
+                        </Border>
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
+                            <ToggleSwitch x:Name="VideoToggle" Header="Videoclip" Toggled="Video_Toggled"/>
+                            <ToggleSwitch x:Name="HdToggle" Header="HD (720p)" Toggled="Video_Toggled"/>
+                            <Button Content="Pantalla completa" Click="Fullscreen_Click" VerticalAlignment="Bottom"/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid x:Name="LyricsPanel" Visibility="Collapsed">
+                        <ListView x:Name="LyricLines" IsItemClickEnabled="True" ItemClick="Lyrics_ItemClick" SelectionMode="Single">
+                            <ListView.ItemTemplate>
+                                <DataTemplate x:DataType="core:LyricLine">
+                                    <TextBlock Text="{x:Bind Text}" FontSize="24" FontWeight="SemiBold" TextWrapping="Wrap" Margin="8,10"/>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                        <TextBlock x:Name="LyricsMessage" TextWrapping="Wrap" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    </Grid>
+                    <StackPanel x:Name="BatchPanel" Visibility="Collapsed" Spacing="12">
+                        <TextBlock Text="Una canción por línea. Por ejemplo: artista — título." TextWrapping="Wrap"/>
+                        <TextBox x:Name="BatchInput" AcceptsReturn="True" TextWrapping="Wrap" Height="200" MaxLength="20000" PlaceholderText="Queen — The Show Must Go On"/>
+                        <Button Content="Buscar canciones" Click="BatchSearch_Click" Style="{StaticResource AccentButtonStyle}"/>
+                    </StackPanel>
+                    <ScrollViewer x:Name="SettingsPanel" Visibility="Collapsed">
+                        <StackPanel Spacing="18" MaxWidth="650" HorizontalAlignment="Left">
+                            <TextBlock Text="Apariencia y reproducción" FontSize="20" FontWeight="SemiBold"/>
+                            <ComboBox x:Name="ThemePicker" Header="Tema" SelectedIndex="0" SelectionChanged="Theme_SelectionChanged" Width="220">
+                                <ComboBoxItem Content="Usar tema de Windows" Tag="system"/><ComboBoxItem Content="Oscuro" Tag="dark"/><ComboBoxItem Content="Claro" Tag="light"/>
+                            </ComboBox>
+                            <ComboBox x:Name="LanguagePicker" Header="Idioma del catálogo y mensajes del motor" SelectedIndex="0" SelectionChanged="Language_SelectionChanged" Width="320">
+                                <ComboBoxItem Content="Español" Tag="es-ES"/><ComboBoxItem Content="English" Tag="en"/><ComboBoxItem Content="Português (Brasil)" Tag="pt-BR"/><ComboBoxItem Content="Italiano" Tag="it"/><ComboBoxItem Content="Tiếng Việt" Tag="vi"/>
+                            </ComboBox>
+                            <ToggleSwitch x:Name="AutoRadioToggle" Header="Continuar con canciones relacionadas al terminar" Toggled="AutoRadio_Toggled"/>
+                            <TextBlock Text="Motor de reproducción" FontSize="20" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="EngineStatus" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Actualizar / instalar yt-dlp" Click="UpdateEngine_Click"/>
+                                <Button Content="Reintentar herramientas" Click="RetryTools_Click"/>
+                                <ComboBox x:Name="ChannelPicker" SelectedIndex="0"><ComboBoxItem Content="Stable"/><ComboBoxItem Content="Nightly"/></ComboBox>
+                            </StackPanel>
+                            <TextBlock Text="Biblioteca y copias de seguridad" FontSize="20" FontWeight="SemiBold"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Exportar copia" Click="Export_Click"/><Button Content="Importar copia" Click="Import_Click"/>
+                                <Button Content="Abrir carpeta de datos" Click="OpenData_Click"/>
+                            </StackPanel>
+                            <TextBlock Text="Musike · WinUI 3 · 1.5.1" Opacity="0.5" Margin="0,16,0,0"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Grid>
+        </NavigationView>
+        <Border Grid.Row="2" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="16,10">
+            <Grid ColumnSpacing="16">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="3*"/><ColumnDefinition Width="150"/></Grid.ColumnDefinitions>
+                <Grid ColumnSpacing="12">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="56"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Border Width="56" Height="56" CornerRadius="6" Background="{ThemeResource ControlFillColorDefaultBrush}"><Image x:Name="SmallArtwork" Stretch="UniformToFill"/></Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="3">
+                        <TextBlock x:Name="TrackTitle" Text="Elige una canción" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock x:Name="TrackArtist" Text="Musike" FontSize="12" Opacity="0.6" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                    <Button x:Name="FavoriteButton" Grid.Column="2" Click="Favorite_Click" VerticalAlignment="Center" ToolTipService.ToolTip="Añadir / quitar favorito" AutomationProperties.Name="Favorito"><FontIcon Glyph="&#xEB51;" FontSize="18"/></Button>
+                </Grid>
+                <StackPanel Grid.Column="1" Spacing="0" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                        <ToggleButton x:Name="ShuffleButton" Click="Shuffle_Click" ToolTipService.ToolTip="Aleatorio" AutomationProperties.Name="Aleatorio"><FontIcon Glyph="&#xE8B1;" FontSize="16"/></ToggleButton>
+                        <Button Click="Previous_Click" AutomationProperties.Name="Anterior"><SymbolIcon Symbol="Previous"/></Button>
+                        <Button x:Name="PlayButton" Click="Toggle_Click" Style="{StaticResource AccentButtonStyle}" AutomationProperties.Name="Reproducir o pausar"><SymbolIcon x:Name="PlayIcon" Symbol="Play"/></Button>
+                        <Button Click="Next_Click" AutomationProperties.Name="Siguiente"><SymbolIcon Symbol="Next"/></Button>
+                        <Button x:Name="RepeatButton" Content="↻" Click="Repeat_Click" ToolTipService.ToolTip="Repetir: desactivado" AutomationProperties.Name="Modo de repetición"/>
+                    </StackPanel>
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/><ColumnDefinition Width="42"/></Grid.ColumnDefinitions>
+                        <TextBlock x:Name="PositionText" Text="0:00" FontSize="11" VerticalAlignment="Center"/>
+                        <Slider x:Name="SeekSlider" Grid.Column="1" MinWidth="80" Minimum="0" Maximum="1" AutomationProperties.Name="Posición de reproducción"/>
+                        <!-- Keep the control name distinct from Track.DurationText used by the compiled row binding. -->
+                        <TextBlock x:Name="TotalDurationText" Grid.Column="2" Text="0:00" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+                    <Button x:Name="MuteButton" Click="Mute_Click" AutomationProperties.Name="Silenciar"><SymbolIcon Symbol="Volume"/></Button>
+                    <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" Value="80" ValueChanged="Volume_ValueChanged" AutomationProperties.Name="Volumen"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

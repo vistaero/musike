@@ -22,6 +22,8 @@ Runs as a **Windows**, **macOS** and **Linux** app, as an **Android**, **Android
 
 </div>
 
+**Native Windows port:** [WinUI 3 build, features and migration](desktop-winui/README.md). Run `pnpm winui` after installing the .NET 10 SDK and server dependencies. The native app uses C#/XAML and Windows media playback, with the existing extraction engine bundled as a Node sidecar.
+
 ---
 
 ## Contents

@@ -9,7 +9,13 @@
     "start": "pnpm --filter ./server start",
     "desktop": "pnpm --filter musike-desktop start",
     "installer": "pnpm --filter musike-desktop dist",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "winui:prepare": "node desktop-winui/scripts/prepare.mjs",
+    "winui": "powershell -NoProfile -ExecutionPolicy Bypass -File desktop-winui/scripts/build.ps1 -Run",
+    "winui:build": "powershell -NoProfile -ExecutionPolicy Bypass -File desktop-winui/scripts/build.ps1",
+    "winui:publish": "powershell -NoProfile -ExecutionPolicy Bypass -File desktop-winui/scripts/build.ps1 -Publish",
+    "winui:test": "dotnet run --project desktop-winui/Musike.Core.Tests && node --test desktop-winui/tests/*.test.mjs",
+    "winui:test:media": "dotnet run --project desktop-winui/Musike.Media.Tests"
   },
   "packageManager": "pnpm@10.14.0"
 }
